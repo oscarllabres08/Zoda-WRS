@@ -25,9 +25,12 @@ function timeLabel(iso: string) {
 export function NotificationsDropdown({
   open,
   onClose,
+  onUnreadChange,
 }: {
   open: boolean;
   onClose: () => void;
+  /** Refresh header badge after read/clear (same instance as ProfilePage unread hook). */
+  onUnreadChange?: () => void;
 }) {
   const nav = useNavigate();
   const { user } = useAuth();
@@ -84,17 +87,34 @@ export function NotificationsDropdown({
 
   const unread = useMemo(() => rows.filter((r) => !r.read_at).length, [rows]);
 
-  async function markRead(id: string) {
-    if (!user) return;
-    await supabase.from('notifications').update({ read_at: new Date().toISOString() }).eq('id', id).eq('recipient_id', user.id);
+  async function markRead(id: string): Promise<boolean> {
+    if (!user) return false;
+    const readAt = new Date().toISOString();
+    const { error } = await supabase
+      .from('notifications')
+      .update({ read_at: readAt })
+      .eq('id', id)
+      .eq('recipient_id', user.id);
+    if (error) {
+      setErr(error.message);
+      window.alert(`Could not mark as read: ${error.message}`);
+      return false;
+    }
+    setRows((prev) => prev.map((r) => (r.id === id ? { ...r, read_at: readAt } : r)));
+    onUnreadChange?.();
+    return true;
   }
 
   async function clearAll() {
     if (!user) return;
     setErr(null);
     const { error } = await supabase.from('notifications').delete().eq('recipient_id', user.id);
-    if (error) setErr(error.message);
+    if (error) {
+      setErr(error.message);
+      return;
+    }
     setRows([]);
+    onUnreadChange?.();
   }
 
   if (!open) return null;
@@ -129,7 +149,8 @@ export function NotificationsDropdown({
                 type="button"
                 className={`notif-item ${n.read_at ? '' : 'notif-item-unread'}`.trim()}
                 onClick={async () => {
-                  await markRead(n.id);
+                  const ok = await markRead(n.id);
+                  if (!ok) return;
                   onClose();
                   if (orderId) nav(`/profile/orders/${orderId}`);
                   else nav('/order');

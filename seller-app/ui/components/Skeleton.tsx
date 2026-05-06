@@ -135,14 +135,13 @@ export function SellerDashboardSkeleton() {
 export function SellerOrdersSkeleton() {
   return (
     <View style={{ gap: theme.spacing.sm }}>
-      <Skeleton width="100%" height={48} borderRadius={14} />
       <View style={{ flexDirection: 'row', gap: theme.spacing.sm }}>
         <Skeleton width="32%" height={74} borderRadius={16} />
         <Skeleton width="32%" height={74} borderRadius={16} />
         <Skeleton width="32%" height={74} borderRadius={16} />
       </View>
       <Skeleton width="100%" height={46} borderRadius={16} />
-      {[0, 1].map((row) => (
+      {[0, 1, 2].map((row) => (
         <SkeletonCard key={row}>
           <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
             <Skeleton width={60} height={60} borderRadius={14} />
@@ -153,6 +152,36 @@ export function SellerOrdersSkeleton() {
             </View>
           </View>
         </SkeletonCard>
+      ))}
+    </View>
+  );
+}
+
+/** Customer list rows (matches Customers tab cards). */
+export function SellerCustomersSkeleton() {
+  return (
+    <View style={{ gap: theme.spacing.sm, marginTop: theme.spacing.xs }}>
+      {[0, 1, 2, 3, 4, 5].map((row) => (
+        <View
+          key={row}
+          style={{
+            backgroundColor: theme.colors.card,
+            borderRadius: theme.radius.xl,
+            borderWidth: 1,
+            borderColor: theme.colors.border,
+            padding: theme.spacing.md,
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 12,
+          }}
+        >
+          <Skeleton width={44} height={44} borderRadius={14} />
+          <View style={{ flex: 1, gap: 8 }}>
+            <Skeleton width="58%" height={16} />
+            <Skeleton width="44%" />
+          </View>
+          <Skeleton width={14} height={14} borderRadius={4} />
+        </View>
       ))}
     </View>
   );
@@ -171,7 +200,7 @@ export function SellerProductsSkeleton() {
       </SkeletonCard>
       <Skeleton width="100%" height={46} borderRadius={14} />
       <Skeleton width="100%" height={42} borderRadius={14} />
-      {[0, 1].map((row) => (
+      {[0, 1, 2, 3, 4].map((row) => (
         <SkeletonCard key={row}>
           <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
             <Skeleton width={44} height={44} borderRadius={14} />

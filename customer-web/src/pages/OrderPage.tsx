@@ -57,25 +57,39 @@ export function OrderPage() {
       setErr(null);
       setLoading(true);
       try {
-        const { data: seller, error: sellerErr } = await supabase
+        const { data: ownerRow, error: ownerErr } = await supabase
           .from('profiles')
           .select('user_id')
           .eq('role', 'seller')
+          .eq('seller_team_role', 'owner')
+          .order('created_at', { ascending: false })
           .limit(1)
           .maybeSingle();
-        if (sellerErr) throw sellerErr;
-        if (!seller?.user_id) throw new Error('No seller configured yet.');
+        if (ownerErr) throw ownerErr;
+        let sellerUserId = ownerRow?.user_id ?? null;
+        if (!sellerUserId) {
+          const { data: fallbackRow, error: fallbackErr } = await supabase
+            .from('profiles')
+            .select('user_id')
+            .eq('role', 'seller')
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          if (fallbackErr) throw fallbackErr;
+          sellerUserId = fallbackRow?.user_id ?? null;
+        }
+        if (!sellerUserId) throw new Error('No seller configured yet.');
 
         const { data: prod, error: prodErr } = await supabase
           .from('products')
           .select('id,seller_id,name,price,is_available,image_url,category')
-          .eq('seller_id', seller.user_id)
+          .eq('seller_id', sellerUserId)
           .order('sort_order', { ascending: true })
           .order('created_at', { ascending: true });
         if (prodErr) throw prodErr;
 
         if (!alive) return;
-        setSellerId(seller.user_id);
+        setSellerId(sellerUserId);
         setProducts((prod ?? []) as Product[]);
       } catch (e) {
         const msg = e instanceof Error ? e.message : 'Failed to load products';
@@ -198,6 +212,7 @@ export function OrderPage() {
           longitude: coords?.longitude ?? null,
           notes: notes.trim() ? notes.trim() : null,
           status: 'pending',
+          payment_settled: false,
         })
         .select('id')
         .single();
@@ -467,7 +482,19 @@ export function OrderPage() {
               </div>
               <div className="row" style={{ marginTop: 10 }}>
                 <button className="btn btn-ghost" type="button" onClick={useCurrentLocation}>
-                  Use Current Location
+                  <span className="btn-inline-icon">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+                      <path
+                        d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 1 1 18 0z"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                      <circle cx="12" cy="10" r="3" stroke="currentColor" strokeWidth="2" />
+                    </svg>
+                    Use Current Location
+                  </span>
                 </button>
                 {coords ? (
                   <div className="muted" style={{ fontSize: 12 }}>

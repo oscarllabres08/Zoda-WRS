@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Pressable, View, type LayoutChangeEvent } from 'react-native';
+import { useEffect, useMemo } from 'react';
+import { Pressable, View } from 'react-native';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
-  withSpring,
+  withTiming,
 } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -15,128 +16,159 @@ type TabDef = {
   key: string;
   label: string;
   icon: keyof typeof Ionicons.glyphMap;
+  iconActive: keyof typeof Ionicons.glyphMap;
 };
 
+const INACTIVE_COLOR = theme.colors.muted;
+const INACTIVE_LABEL = 'rgba(11,27,58,0.72)';
+
 const TABS: TabDef[] = [
-  { key: 'index', label: 'Dashboard', icon: 'home-outline' },
-  { key: 'orders', label: 'Orders', icon: 'list-outline' },
-  { key: 'products', label: 'Product', icon: 'water-outline' },
-  { key: 'profile', label: 'Profile', icon: 'person-outline' },
+  { key: 'index', label: 'Dashboard', icon: 'home-outline', iconActive: 'home' },
+  { key: 'orders', label: 'Orders', icon: 'list-outline', iconActive: 'list' },
+  { key: 'products', label: 'Product', icon: 'water-outline', iconActive: 'water' },
+  { key: 'customers', label: 'Customers', icon: 'people-outline', iconActive: 'people' },
+  { key: 'profile', label: 'Profile', icon: 'person-outline', iconActive: 'person' },
 ];
 
-export function AnimatedTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
-  const [width, setWidth] = useState(0);
-  const tabCount = state.routes.length;
+/** Left → right tab order (Profile last = rightmost). */
+const TAB_ROUTE_ORDER = ['index', 'orders', 'products', 'customers', 'profile'] as const;
 
-  const activeIndex = state.index;
-  const indicatorX = useSharedValue(0);
+function normalizeRouteName(name: string) {
+  return name.replace(/\/index$/, '');
+}
 
-  const itemWidth = useMemo(() => (width > 0 ? width / tabCount : 0), [width, tabCount]);
+function tabLabel(routeName: string, options: BottomTabBarProps['descriptors'][string]['options']) {
+  const tb = options?.tabBarLabel;
+  if (typeof tb === 'string' && tb.trim()) return tb;
+  if (typeof options?.title === 'string' && options.title.trim()) return options.title;
+  const key = normalizeRouteName(routeName);
+  const fromTabs = TABS.find((t) => t.key === key)?.label;
+  return fromTabs ?? key;
+}
+
+function TabButton({
+  label,
+  iconName,
+  iconActiveName,
+  isFocused,
+  onPress,
+}: {
+  label: string;
+  iconName: keyof typeof Ionicons.glyphMap;
+  iconActiveName: keyof typeof Ionicons.glyphMap;
+  isFocused: boolean;
+  onPress: () => void;
+}) {
+  const focus = useSharedValue(isFocused ? 1 : 0);
 
   useEffect(() => {
-    if (!itemWidth) return;
-    indicatorX.value = withSpring(activeIndex * itemWidth, {
-      damping: 18,
-      stiffness: 180,
-      mass: 0.7,
+    focus.value = withTiming(isFocused ? 1 : 0, { duration: 180 });
+  }, [isFocused, focus]);
+
+  const iconAnim = useAnimatedStyle(() => {
+    const s = 1 + 0.06 * focus.value;
+    return {
+      transform: [{ scale: s }],
+    };
+  });
+
+  const resolvedIcon = isFocused ? iconActiveName : iconName;
+
+  return (
+    <Pressable
+      onPress={onPress}
+      style={{
+        flex: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 4,
+      }}
+    >
+      <Animated.View style={[{ width: 38, height: 38, alignItems: 'center', justifyContent: 'center' }, iconAnim]}>
+        <Ionicons
+          name={resolvedIcon}
+          size={22}
+          color={isFocused ? theme.colors.primary : INACTIVE_COLOR}
+        />
+      </Animated.View>
+      <Text
+        variant="chip"
+        weight={isFocused ? 'extrabold' : 'semibold'}
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.68}
+        style={{
+          color: isFocused ? theme.colors.primary : INACTIVE_LABEL,
+          textAlign: 'center',
+          width: '100%',
+          paddingHorizontal: 1,
+        }}
+      >
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+export function AnimatedTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
+  const insets = useSafeAreaInsets();
+
+  const orderedRoutes = useMemo(() => {
+    const order = [...TAB_ROUTE_ORDER];
+    return [...state.routes].sort((a, b) => {
+      const ia = order.indexOf(normalizeRouteName(a.name) as (typeof order)[number]);
+      const ib = order.indexOf(normalizeRouteName(b.name) as (typeof order)[number]);
+      return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
     });
-  }, [activeIndex, itemWidth, indicatorX]);
+  }, [state.routes]);
 
-  const indicatorStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: indicatorX.value }],
-  }));
-
-  function onLayout(e: LayoutChangeEvent) {
-    setWidth(e.nativeEvent.layout.width);
-  }
+  const activeKey = state.routes[state.index]?.key;
 
   return (
     <View
-      onLayout={onLayout}
       style={{
         backgroundColor: theme.colors.tabBar,
         borderTopWidth: 1,
         borderTopColor: theme.colors.border,
-        paddingHorizontal: 10,
-        paddingTop: 10,
-        paddingBottom: 12,
+        paddingHorizontal: 4,
+        paddingTop: 8,
+        paddingBottom: 8 + Math.max(insets.bottom, 0),
       }}
     >
-      <View style={{ height: 54, borderRadius: 18, backgroundColor: '#FFFFFF' }}>
-        {itemWidth ? (
-          <Animated.View
-            style={[
-              {
-                position: 'absolute',
-                left: 0,
-                top: 0,
-                width: itemWidth,
-                height: 54,
-                padding: 8,
-              },
-              indicatorStyle,
-            ]}
-          >
-            <View
-              style={{
-                flex: 1,
-                borderRadius: 16,
-                backgroundColor: 'rgba(18,101,214,0.10)',
-              }}
+      <View style={{ flexDirection: 'row', minHeight: 52, alignItems: 'center' }}>
+        {orderedRoutes.map((route) => {
+          const options = descriptors[route.key]?.options;
+          const label = tabLabel(route.name, options);
+          const isFocused = route.key === activeKey;
+
+          const def =
+            TABS.find((t) => t.key === normalizeRouteName(route.name)) ??
+            TABS.find((t) => route.name === `${t.key}/index` || route.name.startsWith(`${t.key}/`));
+          const iconName = def?.icon ?? 'ellipse-outline';
+          const iconActiveName = def?.iconActive ?? iconName;
+
+          const onPress = () => {
+            const event = navigation.emit({
+              type: 'tabPress',
+              target: route.key,
+              canPreventDefault: true,
+            });
+            if (!isFocused && !event.defaultPrevented) {
+              navigation.navigate(route.name as never);
+            }
+          };
+
+          return (
+            <TabButton
+              key={route.key}
+              label={label}
+              iconName={iconName}
+              iconActiveName={iconActiveName}
+              isFocused={isFocused}
+              onPress={onPress}
             />
-          </Animated.View>
-        ) : null}
-
-        <View style={{ flexDirection: 'row', height: 54 }}>
-          {state.routes.map((route, index) => {
-            const options = descriptors[route.key]?.options;
-            const label =
-              options?.tabBarLabel?.toString() ??
-              (typeof options?.title === 'string' ? options.title : undefined) ??
-              route.name;
-            const isFocused = state.index === index;
-
-            const def = TABS.find((t) => t.key === route.name);
-            const iconName = def?.icon ?? 'ellipse-outline';
-
-            const onPress = () => {
-              const event = navigation.emit({
-                type: 'tabPress',
-                target: route.key,
-                canPreventDefault: true,
-              });
-              if (!isFocused && !event.defaultPrevented) {
-                navigation.navigate(route.name as never);
-              }
-            };
-
-            return (
-              <Pressable
-                key={route.key}
-                onPress={onPress}
-                style={{
-                  flex: 1,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 4,
-                }}
-              >
-                <Ionicons
-                  name={iconName}
-                  size={22}
-                  color={isFocused ? theme.colors.primary : 'rgba(18,101,214,0.55)'}
-                />
-                <Text
-                  variant="chip"
-                  weight="extrabold"
-                  style={{ color: isFocused ? theme.colors.primary : 'rgba(18,101,214,0.55)' }}
-                >
-                  {label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
+          );
+        })}
       </View>
     </View>
   );

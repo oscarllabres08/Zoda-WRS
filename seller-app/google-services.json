@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "641806904791",
+    "project_id": "aquabeast-wrs",
+    "storage_bucket": "aquabeast-wrs.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:641806904791:android:5b1e789399e76009776f92",
+        "android_client_info": {
+          "package_name": "com.aquabeast.customerapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB1hqZ9GiV36oVzXuOQTIHpY9oD2raBUsQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:641806904791:android:bb7e8fb2b5cf00be776f92",
+        "android_client_info": {
+          "package_name": "com.aquabeast.sellerapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB1hqZ9GiV36oVzXuOQTIHpY9oD2raBUsQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

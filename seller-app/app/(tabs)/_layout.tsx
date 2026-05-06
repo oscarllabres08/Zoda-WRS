@@ -18,24 +18,35 @@ export default function TabLayout() {
         name="index"
         options={{
           title: 'Dashboard',
+          tabBarLabel: 'Dashboard',
         }}
       />
       <Tabs.Screen
         name="orders"
         options={{
           title: 'Orders',
+          tabBarLabel: 'Orders',
         }}
       />
       <Tabs.Screen
         name="products"
         options={{
           title: 'Product',
+          tabBarLabel: 'Product',
+        }}
+      />
+      <Tabs.Screen
+        name="customers"
+        options={{
+          title: 'Customers',
+          tabBarLabel: 'Customers',
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
           title: 'Profile',
+          tabBarLabel: 'Profile',
         }}
       />
     </Tabs>

@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Modal, Pressable, ScrollView, View } from 'react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, Modal, Pressable, ScrollView, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import * as Notifications from 'expo-notifications';
 import { useRouter } from 'expo-router';
 
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../providers/AuthProvider';
+import { useNotifications } from '../../providers/NotificationsProvider';
 import { theme } from '../theme';
 import { Card } from './Card';
 import { Text } from './Text';
@@ -13,6 +13,7 @@ import { Button } from './Button';
 
 type NotifRow = {
   id: string;
+  kind: string;
   title: string;
   body: string;
   created_at: string;
@@ -38,6 +39,8 @@ export function NotificationsMenu({
 }) {
   const router = useRouter();
   const { user } = useAuth();
+  const { refresh } = useNotifications();
+  const channelInstanceIdRef = useRef(Math.random().toString(36).slice(2));
   const [rows, setRows] = useState<NotifRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -48,7 +51,7 @@ export function NotificationsMenu({
     setLoading(true);
     const { data, error } = await supabase
       .from('notifications')
-      .select('id,title,body,created_at,read_at,data,order_id')
+      .select('id,kind,title,body,created_at,read_at,data,order_id')
       .eq('recipient_id', user.id)
       .order('created_at', { ascending: false })
       .limit(30);
@@ -66,23 +69,11 @@ export function NotificationsMenu({
   useEffect(() => {
     if (!user) return;
     const channel = supabase
-      .channel(`seller-notifs-${user.id}`)
+      .channel(`seller-notifs-menu-${user.id}-${channelInstanceIdRef.current}`)
       .on(
         'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'notifications', filter: `recipient_id=eq.${user.id}` },
-        async (payload) => {
-          const n = payload.new as any;
-          // Local popup (works while app open)
-          await Notifications.scheduleNotificationAsync({
-            content: {
-              title: String(n.title ?? 'Notification'),
-              body: String(n.body ?? ''),
-              data: { orderId: n.order_id ?? n.data?.orderId },
-            },
-            trigger: null,
-          });
-          load();
-        }
+        { event: '*', schema: 'public', table: 'notifications', filter: `recipient_id=eq.${user.id}` },
+        () => load()
       )
       .subscribe();
     return () => {
@@ -93,9 +84,18 @@ export function NotificationsMenu({
 
   const unreadCount = useMemo(() => rows.filter((r) => !r.read_at).length, [rows]);
 
-  async function markRead(id: string) {
-    if (!user) return;
-    await supabase.from('notifications').update({ read_at: new Date().toISOString() }).eq('id', id).eq('recipient_id', user.id);
+  async function markRead(id: string): Promise<boolean> {
+    if (!user) return false;
+    const now = new Date().toISOString();
+    const { error } = await supabase.from('notifications').update({ read_at: now }).eq('id', id).eq('recipient_id', user.id);
+    if (error) {
+      setErr(error.message);
+      Alert.alert('Could not mark as read', error.message);
+      return false;
+    }
+    setRows((prev) => prev.map((r) => (r.id === id ? { ...r, read_at: now } : r)));
+    await refresh();
+    return true;
   }
 
   async function clearAll() {
@@ -104,6 +104,7 @@ export function NotificationsMenu({
     const { error } = await supabase.from('notifications').delete().eq('recipient_id', user.id);
     if (error) setErr(error.message);
     setRows([]);
+    await refresh();
   }
 
   return (
@@ -161,12 +162,19 @@ export function NotificationsMenu({
 
             {rows.map((n) => {
               const orderId = (n.order_id ?? n.data?.orderId) as string | undefined;
+              const kind = (n.kind ?? n.data?.kind ?? n.data?.type) as string | undefined;
+              const isRegistrationRequest = kind === 'seller_registration_pending';
               return (
                 <Pressable
                   key={n.id}
                   onPress={async () => {
-                    await markRead(n.id);
+                    const ok = await markRead(n.id);
+                    if (!ok) return;
                     onClose();
+                    if (isRegistrationRequest) {
+                      router.push('/(tabs)/profile/registrations?returnTo=fromNotification');
+                      return;
+                    }
                     if (orderId) router.push(`/order/${orderId}`);
                     else router.push('/(tabs)/orders');
                   }}

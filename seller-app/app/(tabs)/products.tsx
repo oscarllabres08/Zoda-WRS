@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, FlatList, Image, Pressable, Switch, TextInput, View } from 'react-native';
+import { Alert, FlatList, Image, Pressable, Switch, TextInput, useWindowDimensions, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
@@ -23,6 +23,7 @@ type ProductRow = {
   is_available: boolean;
   image_url?: string | null;
   category?: 'water' | 'other' | null;
+  earn_loyalty_points?: boolean | null;
 };
 
 function money(n: number) {
@@ -37,44 +38,50 @@ const CATEGORY_TABS: Array<{ key: 'all' | 'water' | 'other'; label: string }> = 
 
 export default function ProductsScreen() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, businessId } = useAuth();
+  const { width } = useWindowDimensions();
+  const isTablet = width >= 768;
+  const numColumns = isTablet ? 2 : 1;
+  /** ~25% of screen width for product thumbnails (readable on phones). */
+  const productThumbSize = Math.min(Math.max(Math.round(width * 0.25), 88), 140);
   const [products, setProducts] = useState<ProductRow[]>([]);
   const [query, setQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<'all' | 'water' | 'other'>('all');
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    if (!user) return;
+    if (!user || !businessId) return;
     setError(null);
     setLoading(true);
     const { data, error: err } = await supabase
       .from('products')
-      .select('id,name,price,is_available,image_url,category')
-      .eq('seller_id', user.id)
+      .select('id,name,price,is_available,image_url,category,earn_loyalty_points')
+      .eq('seller_id', businessId)
       .order('sort_order', { ascending: true })
       .order('created_at', { ascending: true });
     if (err) setError(err.message);
     setProducts((data ?? []) as ProductRow[]);
     setLoading(false);
-  }, [user]);
+  }, [user, businessId]);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || !businessId) return;
     load();
     const channel = supabase
-      .channel(`seller-products-${user.id}`)
+      .channel(`seller-products-${businessId}`)
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'products', filter: `seller_id=eq.${user.id}` },
+        { event: '*', schema: 'public', table: 'products', filter: `seller_id=eq.${businessId}` },
         () => load()
       )
       .subscribe();
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user, load]);
+  }, [user, businessId, load]);
 
   // Ensures newly-added/edited items show immediately when coming back to this tab.
   useFocusEffect(
@@ -85,6 +92,12 @@ export default function ProductsScreen() {
   );
 
   async function toggleAvailability(productId: string, next: boolean) {
+    // Optimistic update so the Switch responds immediately.
+    const previous = products.find((p) => p.id === productId)?.is_available;
+    setProducts((prev) =>
+      prev.map((p) => (p.id === productId ? { ...p, is_available: next } : p))
+    );
+
     setUpdatingId(productId);
     setError(null);
     try {
@@ -94,6 +107,12 @@ export default function ProductsScreen() {
         .eq('id', productId);
       if (err) throw err;
     } catch (e) {
+      // Revert on failure.
+      if (typeof previous === 'boolean') {
+        setProducts((prev) =>
+          prev.map((p) => (p.id === productId ? { ...p, is_available: previous } : p))
+        );
+      }
       setError(e instanceof Error ? e.message : 'Failed to update product');
     } finally {
       setUpdatingId(null);
@@ -143,10 +162,26 @@ export default function ProductsScreen() {
   return (
     <Screen>
       <FlatList
+        key={String(numColumns)}
         data={filtered}
+        numColumns={numColumns}
         keyExtractor={(p) => p.id}
+        refreshing={refreshing}
+        onRefresh={async () => {
+          setRefreshing(true);
+          await load();
+          setRefreshing(false);
+        }}
         contentContainerStyle={{ paddingBottom: 92 }}
         ItemSeparatorComponent={() => <View style={{ height: theme.spacing.sm }} />}
+        columnWrapperStyle={
+          numColumns > 1
+            ? {
+                gap: theme.spacing.sm,
+                justifyContent: 'space-between',
+              }
+            : undefined
+        }
         ListHeaderComponent={
           <Animated.View entering={FadeInDown.duration(240)} style={{ gap: theme.spacing.sm }}>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -165,60 +200,69 @@ export default function ProductsScreen() {
               <Text variant="h2" weight="extrabold" style={{ color: '#FFFFFF' }}>
                 Product overview
               </Text>
-              <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
-                <View style={{ flex: 1 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'stretch', gap: 10, marginTop: 10 }}>
+                <View style={{ flex: 1, minWidth: 0 }}>
                   <View
                     style={{
+                      flex: 1,
+                      minHeight: 88,
+                      justifyContent: 'center',
                       borderRadius: 16,
                       paddingVertical: 12,
-                      paddingHorizontal: 12,
+                      paddingHorizontal: 10,
                       backgroundColor: 'rgba(255,255,255,0.14)',
                       borderWidth: 1,
                       borderColor: 'rgba(255,255,255,0.20)',
                     }}
                   >
-                    <Text variant="muted" weight="bold" style={{ color: 'rgba(255,255,255,0.84)' }}>
+                    <Text variant="muted" weight="bold" style={{ color: 'rgba(255,255,255,0.84)' }} numberOfLines={2}>
                       Total products
                     </Text>
-                    <Text variant="title" weight="extrabold" style={{ color: '#FFFFFF', marginTop: 2 }}>
+                    <Text variant="title" weight="extrabold" style={{ color: '#FFFFFF', marginTop: 4 }}>
                       {overview.total}
                     </Text>
                   </View>
                 </View>
-                <View style={{ flex: 1 }}>
+                <View style={{ flex: 1, minWidth: 0 }}>
                   <View
                     style={{
+                      flex: 1,
+                      minHeight: 88,
+                      justifyContent: 'center',
                       borderRadius: 16,
                       paddingVertical: 12,
-                      paddingHorizontal: 12,
+                      paddingHorizontal: 10,
                       backgroundColor: 'rgba(255,255,255,0.14)',
                       borderWidth: 1,
                       borderColor: 'rgba(255,255,255,0.20)',
                     }}
                   >
-                    <Text variant="muted" weight="bold" style={{ color: 'rgba(255,255,255,0.84)' }}>
+                    <Text variant="muted" weight="bold" style={{ color: 'rgba(255,255,255,0.84)' }} numberOfLines={2}>
                       In stock
                     </Text>
-                    <Text variant="title" weight="extrabold" style={{ color: '#FFFFFF', marginTop: 2 }}>
+                    <Text variant="title" weight="extrabold" style={{ color: '#FFFFFF', marginTop: 4 }}>
                       {overview.inStock}
                     </Text>
                   </View>
                 </View>
-                <View style={{ flex: 1 }}>
+                <View style={{ flex: 1, minWidth: 0 }}>
                   <View
                     style={{
+                      flex: 1,
+                      minHeight: 88,
+                      justifyContent: 'center',
                       borderRadius: 16,
                       paddingVertical: 12,
-                      paddingHorizontal: 12,
+                      paddingHorizontal: 10,
                       backgroundColor: 'rgba(255,255,255,0.14)',
                       borderWidth: 1,
                       borderColor: 'rgba(255,255,255,0.20)',
                     }}
                   >
-                    <Text variant="muted" weight="bold" style={{ color: 'rgba(255,255,255,0.84)' }}>
+                    <Text variant="muted" weight="bold" style={{ color: 'rgba(255,255,255,0.84)' }} numberOfLines={2}>
                       Out of stock
                     </Text>
-                    <Text variant="title" weight="extrabold" style={{ color: '#FFFFFF', marginTop: 2 }}>
+                    <Text variant="title" weight="extrabold" style={{ color: '#FFFFFF', marginTop: 4 }}>
                       {overview.outOfStock}
                     </Text>
                   </View>
@@ -259,8 +303,8 @@ export default function ProductsScreen() {
           </Animated.View>
         }
         renderItem={({ item }) => (
-          <Animated.View entering={FadeInDown.duration(220).delay(30)}>
-            <Card>
+          <Animated.View entering={FadeInDown.duration(220).delay(30)} style={{ flex: 1 }}>
+            <Card style={{ flex: 1 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                 <Pressable
                   onPress={() => router.push(`/product/${item.id}`)}
@@ -268,9 +312,9 @@ export default function ProductsScreen() {
                 >
                   <View
                     style={{
-                      width: 44,
-                      height: 44,
-                      borderRadius: 14,
+                      width: productThumbSize,
+                      height: productThumbSize,
+                      borderRadius: 16,
                       backgroundColor: '#EEF4FF',
                       borderWidth: 1,
                       borderColor: theme.colors.border,
@@ -282,10 +326,11 @@ export default function ProductsScreen() {
                     {publicImageUrl(item.image_url) ? (
                       <Image
                         source={{ uri: publicImageUrl(item.image_url)! }}
-                        style={{ width: 44, height: 44 }}
+                        style={{ width: productThumbSize, height: productThumbSize }}
+                        resizeMode="cover"
                       />
                     ) : (
-                      <Text weight="extrabold" style={{ color: theme.colors.primary }}>
+                      <Text weight="extrabold" style={{ color: theme.colors.primary, fontSize: Math.min(22, productThumbSize * 0.22) }}>
                         W
                       </Text>
                     )}
@@ -298,6 +343,24 @@ export default function ProductsScreen() {
                     <Text variant="muted" weight="bold" style={{ marginTop: 2 }}>
                       {(item.category ?? 'water') === 'water' ? 'Water' : 'Other'}
                     </Text>
+                    {item.earn_loyalty_points ? (
+                      <View style={{ marginTop: 6, alignSelf: 'flex-start' }}>
+                        <View
+                          style={{
+                            paddingVertical: 4,
+                            paddingHorizontal: 8,
+                            borderRadius: 10,
+                            borderWidth: 1,
+                            borderColor: 'rgba(34,197,94,0.35)',
+                            backgroundColor: 'rgba(34,197,94,0.10)',
+                          }}
+                        >
+                          <Text variant="chip" weight="extrabold" style={{ color: theme.colors.success }}>
+                            Loyalty points
+                          </Text>
+                        </View>
+                      </View>
+                    ) : null}
                     {!item.is_available ? (
                       <View style={{ marginTop: 6, alignSelf: 'flex-start' }}>
                         <View
@@ -316,11 +379,7 @@ export default function ProductsScreen() {
                         </View>
                       </View>
                     ) : (
-                      <Text
-                        variant="muted"
-                        weight="bold"
-                        style={{ marginTop: 2, color: theme.colors.success }}
-                      >
+                      <Text variant="muted" weight="bold" style={{ marginTop: 6, color: theme.colors.success, fontSize: 13 }}>
                         Available
                       </Text>
                     )}

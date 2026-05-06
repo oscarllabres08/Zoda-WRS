@@ -1,21 +1,44 @@
-import { useState } from 'react';
-import { Link, useRouter } from 'expo-router';
-import { SafeAreaView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, View } from 'react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 
 import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../providers/AuthProvider';
+import { Screen } from '../../ui/components/Screen';
+import { Card } from '../../ui/components/Card';
+import { Text } from '../../ui/components/Text';
+import { TextField } from '../../ui/components/TextField';
+import { Button } from '../../ui/components/Button';
+import { theme } from '../../ui/theme';
+
+const authLogo = require('../../assets/icon.jpeg');
 
 export default function SignInScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ notice?: string }>();
+  const { gateMessage, clearGateMessage } = useAuth();
   const [email, setEmail] = useState('');
+  const [routeNotice, setRouteNotice] = useState<string | null>(null);
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  async function signIn() {
+  useEffect(() => {
+    const n = typeof params.notice === 'string' ? params.notice : null;
+    setRouteNotice(n && n.trim() ? n : null);
+  }, [params.notice]);
+
+  async function submit() {
     setError(null);
+    clearGateMessage();
+    setRouteNotice(null);
     setLoading(true);
     try {
-      const { error: err } = await supabase.auth.signInWithPassword({ email, password });
+      if (!email.trim() || !password.trim()) {
+        setError('Please enter your email and password.');
+        return;
+      }
+      const { error: err } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
       if (err) throw err;
       router.replace('/(tabs)');
     } catch (e) {
@@ -26,97 +49,77 @@ export default function SignInScreen() {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#0B1220' }}>
-      <View style={{ padding: 16, gap: 12, flex: 1, justifyContent: 'center' }}>
-        <Text style={{ color: 'rgba(255,255,255,0.9)', fontSize: 24, fontWeight: '800' }}>
-          Seller Login
-        </Text>
-        <Text style={{ color: 'rgba(255,255,255,0.65)' }}>
-          Login to manage products and receive orders in realtime.
-        </Text>
-
-        <View style={{ gap: 10, marginTop: 10 }}>
-          <TextInput
-            placeholder="Email"
-            placeholderTextColor="rgba(255,255,255,0.45)"
-            autoCapitalize="none"
-            keyboardType="email-address"
-            value={email}
-            onChangeText={setEmail}
-            style={{
-              color: 'white',
-              paddingVertical: 12,
-              paddingHorizontal: 12,
-              borderRadius: 12,
-              borderWidth: 1,
-              borderColor: 'rgba(255,255,255,0.12)',
-              backgroundColor: 'rgba(0,0,0,0.18)',
-            }}
-          />
-          <TextInput
-            placeholder="Password"
-            placeholderTextColor="rgba(255,255,255,0.45)"
-            secureTextEntry
-            value={password}
-            onChangeText={setPassword}
-            style={{
-              color: 'white',
-              paddingVertical: 12,
-              paddingHorizontal: 12,
-              borderRadius: 12,
-              borderWidth: 1,
-              borderColor: 'rgba(255,255,255,0.12)',
-              backgroundColor: 'rgba(0,0,0,0.18)',
-            }}
-          />
-        </View>
-
-        {error ? (
-          <View
-            style={{
-              padding: 12,
-              borderRadius: 12,
-              borderWidth: 1,
-              borderColor: 'rgba(255,77,79,0.4)',
-              backgroundColor: 'rgba(255,77,79,0.12)',
-            }}
-          >
-            <Text style={{ color: 'white', fontWeight: '700' }}>{error}</Text>
-          </View>
-        ) : null}
-
-        <TouchableOpacity
-          onPress={signIn}
-          disabled={loading}
-          style={{
-            marginTop: 6,
-            paddingVertical: 12,
-            borderRadius: 12,
-            alignItems: 'center',
-            backgroundColor: '#2F80FF',
-            opacity: loading ? 0.7 : 1,
+    <Screen style={{ padding: 0 }}>
+      <KeyboardAvoidingView
+        style={{ flex: 1, width: '100%' }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
+      >
+        <ScrollView
+          keyboardDismissMode="on-drag"
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{
+            padding: theme.spacing.md,
+            paddingBottom: 280,
+            flexGrow: 1,
           }}
         >
-          <Text style={{ color: 'white', fontWeight: '800' }}>
-            {loading ? 'Please wait…' : 'Login'}
+          <View style={{ alignItems: 'center', marginBottom: theme.spacing.md }}>
+            <Image source={authLogo} style={{ width: 110, height: 110, borderRadius: 26 }} resizeMode="contain" />
+          </View>
+          <Text variant="title" weight="extrabold">
+            Seller Login
           </Text>
-        </TouchableOpacity>
+          <Text variant="muted" style={{ marginTop: 4 }}>
+            Login to manage products and receive orders in realtime.
+          </Text>
 
-        <Link href="/(auth)/sign-up" asChild>
-          <TouchableOpacity
-            style={{
-              paddingVertical: 12,
-              borderRadius: 12,
-              alignItems: 'center',
-              borderWidth: 1,
-              borderColor: 'rgba(255,255,255,0.12)',
-            }}
-          >
-            <Text style={{ color: 'white', fontWeight: '800' }}>Create seller account</Text>
-          </TouchableOpacity>
-        </Link>
-      </View>
-    </SafeAreaView>
+          <View style={{ marginTop: theme.spacing.md, gap: theme.spacing.sm }}>
+            {gateMessage || routeNotice ? (
+              <Card>
+                <Text weight="bold" style={{ color: theme.colors.primary }}>
+                  Notice
+                </Text>
+                <Text style={{ marginTop: 8 }}>{gateMessage ?? routeNotice}</Text>
+              </Card>
+            ) : null}
+            <Card>
+              <View style={{ gap: 10 }}>
+                <TextField
+                  label="Email"
+                  value={email}
+                  onChangeText={setEmail}
+                  placeholder="you@example.com"
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                />
+                <TextField
+                  label="Password"
+                  value={password}
+                  onChangeText={setPassword}
+                  placeholder="Enter your password"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  passwordToggleable
+                />
+                {error ? (
+                  <Text weight="bold" style={{ color: theme.colors.danger }}>
+                    {error}
+                  </Text>
+                ) : null}
+                <Button title={loading ? 'Please wait…' : 'Login'} disabled={loading} onPress={submit} />
+              </View>
+            </Card>
+
+            <Pressable onPress={() => router.push('/(auth)/sign-up')} style={{ alignItems: 'center', paddingVertical: 8 }}>
+              <Text weight="bold" style={{ color: theme.colors.primary }}>
+                Registration
+              </Text>
+            </Pressable>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </Screen>
   );
 }
-

@@ -1,0 +1,68 @@
+{
+  "expo": {
+    "name": "Aquabeast WRS",
+    "slug": "customer-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "../icon.jpeg",
+    "scheme": "aquabeastcustomer",
+    "userInterfaceStyle": "automatic",
+    "androidStatusBar": {
+      "barStyle": "dark-content",
+      "backgroundColor": "#E6F4FE",
+      "translucent": false
+    },
+    "splash": {
+      "image": "../icon.jpeg",
+      "resizeMode": "contain",
+      "backgroundColor": "#E6F4FE"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.aquabeast.customerapp"
+    },
+    "android": {
+      "softwareKeyboardLayoutMode": "resize",
+      "googleServicesFile": "./google-services.json",
+      "adaptiveIcon": {
+        "foregroundImage": "../icon.jpeg",
+        "backgroundColor": "#E6F4FE"
+      },
+      "package": "com.aquabeast.customerapp",
+      "versionCode": 1,
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.VIBRATE"
+      ]
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "../icon.jpeg"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-notifications",
+        {
+          "sounds": [
+            "../notification.wav"
+          ]
+        }
+      ],
+      "@react-native-community/datetimepicker"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "20419748-586e-4336-81f5-ba73e96d7f90"
+      }
+    },
+    "owner": "llabresoscar08"
+  }
+}

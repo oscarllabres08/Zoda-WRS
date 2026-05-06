@@ -1,0 +1,10 @@
+{
+  "name": "aquabeast-wrs/mailer-api",
+  "description": "Password reset mailer (PHPMailer) for Aquabeast WRS",
+  "type": "project",
+  "require": {
+    "phpmailer/phpmailer": "^6.10",
+    "vlucas/phpdotenv": "^5.6"
+  }
+}
+

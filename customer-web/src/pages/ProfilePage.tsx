@@ -29,7 +29,7 @@ function statusLabel(s: string) {
 export function ProfilePage() {
   const nav = useNavigate();
   const { user, loading: authLoading, signOut } = useAuth();
-  const { unreadCount } = useNotificationsUnreadCount();
+  const { unreadCount, refresh: refreshUnreadBadge } = useNotificationsUnreadCount();
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [profile, setProfile] = useState<{ display_name?: string | null; phone?: string | null } | null>(null);
   const [loading, setLoading] = useState(true);
@@ -121,7 +121,7 @@ export function ProfilePage() {
 
   return (
     <div className="page">
-      <NotificationsDropdown open={notifOpen} onClose={() => setNotifOpen(false)} />
+      <NotificationsDropdown open={notifOpen} onClose={() => setNotifOpen(false)} onUnreadChange={refreshUnreadBadge} />
       <header className="topbar">
         <img className="brand-logo" src={logoImg} alt="Aquabeast logo" />
         <div className="brand-title brand-title-center">Aquabeast WRS</div>

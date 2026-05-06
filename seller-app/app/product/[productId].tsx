@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Image, Pressable, TextInput, View } from 'react-native';
+import { Image, Pressable, Switch, TextInput, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import * as ImagePicker from 'expo-image-picker';
+import { Ionicons } from '@expo/vector-icons';
 
 import { supabase } from '../../lib/supabase';
+import { prepareImageForUpload } from '../../lib/prepareImageForUpload';
+import { readPreparedImageBytes } from '../../lib/readPreparedImageBytes';
 import { useAuth } from '../../providers/AuthProvider';
 import { Screen } from '../../ui/components/Screen';
 import { Card } from '../../ui/components/Card';
@@ -20,6 +23,7 @@ type ProductRow = {
   is_available: boolean;
   image_url?: string | null;
   category?: 'water' | 'other' | null;
+  earn_loyalty_points?: boolean | null;
 };
 
 const BUCKET = 'wrs-assets';
@@ -27,12 +31,13 @@ const BUCKET = 'wrs-assets';
 export default function EditProductScreen() {
   const router = useRouter();
   const { productId } = useLocalSearchParams<{ productId: string }>();
-  const { user } = useAuth();
+  const { user, businessId } = useAuth();
 
   const [product, setProduct] = useState<ProductRow | null>(null);
   const [name, setName] = useState('');
   const [price, setPrice] = useState('');
   const [category, setCategory] = useState<'water' | 'other'>('water');
+  const [earnLoyaltyPoints, setEarnLoyaltyPoints] = useState(false);
   const [imagePath, setImagePath] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -47,7 +52,7 @@ export default function EditProductScreen() {
       setLoading(true);
       const { data, error: err } = await supabase
         .from('products')
-        .select('id,name,price,is_available,image_url,category')
+        .select('id,name,price,is_available,image_url,category,earn_loyalty_points')
         .eq('id', productId)
         .single();
       if (!alive) return;
@@ -62,6 +67,7 @@ export default function EditProductScreen() {
       setPrice(String(p.price));
       setImagePath(p.image_url ?? null);
       setCategory((p.category as 'water' | 'other' | null) ?? 'water');
+      setEarnLoyaltyPoints(!!p.earn_loyalty_points);
       setLoading(false);
     }
 
@@ -79,7 +85,7 @@ export default function EditProductScreen() {
   }
 
   async function pickAndUploadImage() {
-    if (!user) return;
+    if (!user || !businessId) return;
     setError(null);
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) {
@@ -93,21 +99,24 @@ export default function EditProductScreen() {
       quality: 0.9,
     });
     if (res.canceled) return;
-    const asset = res.assets[0];
-    const uri = asset.uri;
-    const ext = (asset.fileName?.split('.').pop() || 'jpg').toLowerCase();
-    const path = `${user.id}/product/${Date.now()}.${ext}`;
-    const blob = await (await fetch(uri)).blob();
+    try {
+      const asset = res.assets[0];
+      const prepared = await prepareImageForUpload(asset.uri);
+      const path = `${businessId}/product/${Date.now()}.jpg`;
+      const bytes = await readPreparedImageBytes(prepared);
 
-    const { error: upErr } = await supabase.storage.from(BUCKET).upload(path, blob, {
-      upsert: true,
-      contentType: blob.type || 'image/jpeg',
-    });
-    if (upErr) {
-      setError(upErr.message);
-      return;
+      const { error: upErr } = await supabase.storage.from(BUCKET).upload(path, bytes, {
+        upsert: true,
+        contentType: prepared.contentType,
+      });
+      if (upErr) {
+        setError(upErr.message);
+        return;
+      }
+      setImagePath(path);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to upload image');
     }
-    setImagePath(path);
   }
 
   async function save() {
@@ -127,7 +136,7 @@ export default function EditProductScreen() {
     try {
       const { error: err } = await supabase
         .from('products')
-        .update({ name: name.trim(), price: p, image_url: imagePath, category })
+        .update({ name: name.trim(), price: p, image_url: imagePath, category, earn_loyalty_points: earnLoyaltyPoints })
         .eq('id', product.id);
       if (err) throw err;
       router.back();
@@ -155,6 +164,27 @@ export default function EditProductScreen() {
 
   return (
     <Screen>
+      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+        <Pressable
+          onPress={() => router.back()}
+          accessibilityRole="button"
+          accessibilityLabel="Back"
+          style={{
+            width: 44,
+            height: 44,
+            borderRadius: 14,
+            borderWidth: 1,
+            borderColor: theme.colors.border,
+            backgroundColor: '#FFFFFF',
+            alignItems: 'center',
+            justifyContent: 'center',
+            ...theme.shadow.card,
+          }}
+        >
+          <Ionicons name="arrow-back" size={20} color={theme.colors.text} />
+        </Pressable>
+        <View style={{ flex: 1 }} />
+      </View>
       <Animated.View entering={FadeInDown.duration(240)} style={{ marginTop: theme.spacing.md }}>
         <Card>
           {loading ? <SellerProductsSkeleton /> : null}
@@ -282,6 +312,33 @@ export default function EditProductScreen() {
                 keyboardType="numeric"
                 style={inputStyle}
               />
+
+              <View
+                style={{
+                  marginTop: 16,
+                  paddingVertical: 12,
+                  paddingHorizontal: 12,
+                  borderRadius: 14,
+                  borderWidth: 1,
+                  borderColor: theme.colors.border,
+                  backgroundColor: 'rgba(18,101,214,0.04)',
+                }}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                  <View style={{ flex: 1, paddingRight: 8 }}>
+                    <Text weight="extrabold">Earn loyalty points</Text>
+                    <Text variant="muted" style={{ marginTop: 4, lineHeight: 18 }}>
+                      When on, each delivered unit of this product adds 1 point (online orders, non-utang). Turn off for small add-ons.
+                    </Text>
+                  </View>
+                  <Switch
+                    value={earnLoyaltyPoints}
+                    onValueChange={setEarnLoyaltyPoints}
+                    trackColor={{ false: '#D5DCE8', true: 'rgba(18,101,214,0.35)' }}
+                    thumbColor={earnLoyaltyPoints ? theme.colors.primary : '#FFFFFF'}
+                  />
+                </View>
+              </View>
 
               <View style={{ marginTop: 14 }}>
                 <Button title={saving ? 'Saving…' : 'Save'} disabled={saving} onPress={save} />

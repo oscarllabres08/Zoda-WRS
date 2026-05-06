@@ -1,12 +1,17 @@
 {
   "expo": {
-    "name": "Aquabeast WRS Seller",
+    "name": "Aquabeast WRS Owner",
     "slug": "seller-app",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "../icon.jpeg",
     "scheme": "sellerapp",
     "userInterfaceStyle": "automatic",
+    "androidStatusBar": {
+      "barStyle": "dark-content",
+      "backgroundColor": "#E6F4FE",
+      "translucent": false
+    },
     "splash": {
       "image": "../icon.jpeg",
       "resizeMode": "contain",
@@ -17,21 +22,36 @@
       "bundleIdentifier": "com.aquabeast.sellerapp"
     },
     "android": {
+      "softwareKeyboardLayoutMode": "resize",
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "../icon.jpeg"
       },
       "package": "com.aquabeast.sellerapp",
       "versionCode": 1,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.VIBRATE"
+      ]
     },
     "web": {
       "bundler": "metro",
       "output": "static",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "../icon.jpeg"
     },
     "plugins": [
-      "expo-router"
+      "expo-router",
+      [
+        "expo-notifications",
+        {
+          "sounds": [
+            "../notification.wav"
+          ]
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

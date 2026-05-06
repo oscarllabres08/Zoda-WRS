@@ -169,6 +169,12 @@ a {
   background: transparent;
 }
 
+.btn-inline-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
 /* Icon-only button (used for back navigation) */
 .btn-icon {
   width: 42px;

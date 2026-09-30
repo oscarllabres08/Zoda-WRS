@@ -93,7 +93,7 @@ function send_reset_email(string $toEmail, string $code): void {
   $username = env_string('SMTP_USERNAME');
   $appPassword = env_string('SMTP_APP_PASSWORD');
   $from = env_string('MAIL_FROM', $username);
-  $fromName = env_string('MAIL_FROM_NAME', 'Aquabeast WRS');
+  $fromName = env_string('MAIL_FROM_NAME', 'Zoda WRS');
 
   if (!$username || !$appPassword || !$from) {
     throw new RuntimeException('SMTP env not configured');

@@ -19,6 +19,9 @@ import {
 } from '@expo-google-fonts/nunito';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text } from '../ui/components/Text';
+import { theme } from '../ui/theme';
+import { ensureAndroidNotificationChannels } from '../lib/notificationChannels';
+import { getNotificationRuntimePrefs } from '../lib/notificationRuntime';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -34,13 +37,17 @@ export const unstable_settings = {
 SplashScreen.preventAutoHideAsync();
 
 Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldShowBanner: true,
-    shouldShowList: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-  }),
+  handleNotification: async () => {
+    const { notificationsEnabled, soundEnabled } = getNotificationRuntimePrefs();
+    const show = notificationsEnabled;
+    return {
+      shouldShowAlert: show,
+      shouldShowBanner: show,
+      shouldShowList: show,
+      shouldPlaySound: show && soundEnabled,
+      shouldSetBadge: false,
+    };
+  },
 });
 
 export default function RootLayout() {
@@ -64,23 +71,13 @@ export default function RootLayout() {
   }, [loaded]);
 
   useEffect(() => {
-    if (Platform.OS !== 'android') return;
-    Notifications.setNotificationChannelAsync('default', {
-      name: 'default',
-      importance: Notifications.AndroidImportance.MAX,
-      // Android channel sounds use the raw resource name (no extension).
-      // `../notification.wav` is bundled via the expo-notifications config plugin.
-      sound: 'notification',
-      vibrationPattern: [0, 250, 250, 250],
-      lightColor: '#1265D6',
-    });
-    Notifications.setNotificationChannelAsync('silent', {
-      name: 'silent',
-      importance: Notifications.AndroidImportance.MAX,
-      sound: null,
-      vibrationPattern: [0],
-      lightColor: '#1265D6',
-    });
+    void (async () => {
+      try {
+        await ensureAndroidNotificationChannels();
+      } catch (e) {
+        if (__DEV__) console.warn('[notifications] channel setup:', e);
+      }
+    })();
   }, []);
 
   if (!loaded) {
@@ -90,6 +87,18 @@ export default function RootLayout() {
   return <RootLayoutNav />;
 }
 
+const zodaNavigationTheme = {
+  ...DefaultTheme,
+  colors: {
+    ...DefaultTheme.colors,
+    primary: theme.colors.primary,
+    background: theme.colors.bg,
+    card: theme.colors.card,
+    text: theme.colors.text,
+    border: theme.colors.border,
+  },
+};
+
 function RootLayoutNav() {
   const colorScheme = useColorScheme();
 
@@ -97,7 +106,7 @@ function RootLayoutNav() {
     <SafeAreaProvider>
       <AuthProvider>
         <NotificationsProvider>
-          <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+          <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : zodaNavigationTheme}>
             <AuthGate />
           </ThemeProvider>
         </NotificationsProvider>
@@ -119,7 +128,7 @@ function AuthGate() {
         | { orderId?: string; kind?: string; pendingUserId?: string }
         | undefined;
       if (data?.kind === 'seller_registration_pending') {
-        router.push('/(tabs)/profile/registrations?returnTo=fromNotification');
+        router.push('/(tabs)/notifications');
         return;
       }
       if (data?.orderId) {
@@ -141,7 +150,7 @@ function AuthGate() {
     }
 
     // Only proceed into the app when the profile check passed (no gate message).
-    if (user && inAuth && !gateMessage) router.replace('/(tabs)');
+    if (user && inAuth && !gateMessage) router.replace('/(tabs)/orders');
   }, [user, loading, profileLoading, gateMessage, segments, router]);
 
   return (
@@ -175,7 +184,7 @@ function AuthGate() {
               const data = (toast.data ?? {}) as { orderId?: string; kind?: string; pendingUserId?: string };
               dismissToast();
               if (data?.kind === 'seller_registration_pending') {
-                router.push('/(tabs)/profile/registrations?returnTo=fromNotification');
+                router.push('/(tabs)/notifications');
                 return;
               }
               if (data?.orderId) {
@@ -188,13 +197,13 @@ function AuthGate() {
               width: '92%',
               maxWidth: 420,
               borderRadius: 16,
-              backgroundColor: '#FFFFFF',
+              backgroundColor: theme.colors.card,
               borderWidth: 1,
-              borderColor: 'rgba(231,238,249,0.95)',
+              borderColor: theme.colors.border,
               paddingVertical: 12,
               paddingHorizontal: 12,
               ...{
-                shadowColor: '#0B1B3A',
+                shadowColor: theme.shadow.ink,
                 shadowOpacity: 0.12,
                 shadowRadius: 18,
                 shadowOffset: { width: 0, height: 10 },

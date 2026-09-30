@@ -187,7 +187,7 @@ export default function ProductsScreen() {
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               <View style={{ flex: 1 }}>
                 <Text variant="title" weight="extrabold">
-                  Aquabeast WRS
+                  Zoda WRS
                 </Text>
                 <Text variant="muted" weight="bold" style={{ marginTop: 2 }}>
                   Manage Products

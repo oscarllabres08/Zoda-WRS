@@ -2,12 +2,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient } from '@supabase/supabase-js';
 import { Platform } from 'react-native';
 
-const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL as string | undefined;
-const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY as string | undefined;
+import { getSupabaseUrlAndKey } from './supabaseEnv';
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error('Missing EXPO_PUBLIC_SUPABASE_URL or EXPO_PUBLIC_SUPABASE_ANON_KEY in customer-app env');
-}
+const { url: supabaseUrl, anonKey: supabaseAnonKey } = getSupabaseUrlAndKey();
 
 /**
  * AsyncStorage breaks Expo Router **web** SSR in Node (`window is not defined`).

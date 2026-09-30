@@ -256,7 +256,7 @@ export default function OrderDetailsScreen() {
                     weight="extrabold"
                     style={{
                       alignSelf: 'flex-start',
-                      color: order.payment_settled === true ? theme.colors.success : theme.colors.warning,
+                      color: order.payment_settled === true ? theme.colors.success : '#B45309',
                     }}
                   >
                     {order.payment_settled === true

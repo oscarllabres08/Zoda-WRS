@@ -1,21 +1,21 @@
 import { Stack } from 'expo-router';
 
+import { profileSubpageScreenOptions } from './stackOptions';
+
 export default function ProfileLayout() {
   return (
     <Stack
       screenOptions={{
         headerShown: false,
-        animation: 'fade_from_bottom',
-        animationDuration: 180,
+        animation: 'slide_from_right',
       }}
     >
       <Stack.Screen name="index" />
-      <Stack.Screen name="loyalty" />
-      <Stack.Screen name="orders" />
-      <Stack.Screen name="account-settings" />
-      <Stack.Screen name="notifications" />
-      <Stack.Screen name="help" />
+      <Stack.Screen name="orders" options={profileSubpageScreenOptions('My Orders')} />
+      <Stack.Screen name="account-settings" options={profileSubpageScreenOptions('Account settings')} />
+      <Stack.Screen name="notifications" options={profileSubpageScreenOptions('Notifications')} />
+      <Stack.Screen name="help" options={profileSubpageScreenOptions('Help Center')} />
+      <Stack.Screen name="loyalty" options={{ headerShown: false }} />
     </Stack>
   );
 }
-

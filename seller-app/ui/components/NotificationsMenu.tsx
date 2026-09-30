@@ -3,6 +3,7 @@ import { Alert, Modal, Pressable, ScrollView, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 
+import { navigateFromSellerNotification } from '../../lib/notificationNavigation';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../providers/AuthProvider';
 import { useNotifications } from '../../providers/NotificationsProvider';
@@ -171,12 +172,11 @@ export function NotificationsMenu({
                     const ok = await markRead(n.id);
                     if (!ok) return;
                     onClose();
-                    if (isRegistrationRequest) {
-                      router.push('/(tabs)/profile/registrations?returnTo=fromNotification');
-                      return;
-                    }
-                    if (orderId) router.push(`/order/${orderId}`);
-                    else router.push('/(tabs)/orders');
+                    navigateFromSellerNotification(router, {
+                      order_id: orderId ?? null,
+                      kind: isRegistrationRequest ? 'seller_registration_pending' : kind,
+                      data: n.data,
+                    });
                   }}
                   style={{
                     padding: 12,

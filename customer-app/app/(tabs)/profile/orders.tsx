@@ -76,7 +76,7 @@ export default function MyOrdersScreen() {
   }, [delivered]);
 
   return (
-    <Screen style={{ padding: 0 }}>
+    <Screen style={{ padding: 0 }} safeAreaEdges={['left', 'right']}>
       <ScrollView
         refreshControl={
           <RefreshControl
@@ -90,26 +90,13 @@ export default function MyOrdersScreen() {
         }
         contentContainerStyle={{ padding: theme.spacing.md, paddingBottom: theme.spacing.xl }}
       >
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-          <Pressable
-            onPress={() => router.back()}
-            style={{ padding: 10, borderRadius: 14, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: '#fff' }}
-          >
-            <Ionicons name="arrow-back" size={20} color={theme.colors.text} />
-          </Pressable>
-          <View style={{ flex: 1 }}>
-            <Text variant="title" weight="extrabold">
-              My Orders
-            </Text>
-            <Text variant="muted" style={{ marginTop: 2 }}>
-              {filter === 'all'
-                ? 'Active and delivered orders.'
-                : filter === 'active'
-                  ? 'Orders still in progress.'
-                  : 'Completed deliveries.'}
-            </Text>
-          </View>
-        </View>
+        <Text variant="muted" style={{ marginBottom: theme.spacing.sm }}>
+          {filter === 'all'
+            ? 'Active and delivered orders.'
+            : filter === 'active'
+              ? 'Orders still in progress.'
+              : 'Completed deliveries.'}
+        </Text>
 
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: theme.spacing.md }}>
           {(

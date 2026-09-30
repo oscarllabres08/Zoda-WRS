@@ -15,16 +15,17 @@ import { Screen } from '../../ui/components/Screen';
 import { Card } from '../../ui/components/Card';
 import { Text } from '../../ui/components/Text';
 import { Button } from '../../ui/components/Button';
+import { GradientPressable, PrimaryGradient } from '../../ui/components/PrimaryGradient';
 import { TextField } from '../../ui/components/TextField';
 import { Skeleton } from '../../ui/components/Skeleton';
 import { NotificationsMenu } from '../../ui/components/NotificationsMenu';
 import { CalendarPickerModal } from '../../ui/components/CalendarPickerModal';
+import { computeDeliveryFee, countDeliveryContainers } from '../../lib/deliveryFee';
 import { theme } from '../../ui/theme';
 
-/** Order screen palette (reference UI). */
-const PAGE_BG = '#F8F9FB';
-const ORDER_BLUE = '#0056D2';
-const ORDER_BLUE_SOFT = 'rgba(0, 86, 210, 0.10)';
+/** Order screen accents — aligned with Zoda logo theme */
+const ORDER_BLUE = theme.colors.primary;
+const ORDER_BLUE_SOFT = theme.colors.bgTint;
 
 type Product = {
   id: string;
@@ -110,7 +111,7 @@ function applySort(list: Product[], mode: SortMode): Product[] {
 }
 
 const CARD_RAISE = {
-  shadowColor: '#0B1B3A',
+  shadowColor: theme.shadow.ink,
   shadowOpacity: 0.07,
   shadowRadius: 14,
   shadowOffset: { width: 0, height: 6 },
@@ -127,6 +128,7 @@ export default function OrderScreen() {
   const paymentQrDisplaySize = useMemo(() => Math.min(190, Math.max(140, width - 72)), [width]);
 
   const [sellerId, setSellerId] = useState<string | null>(null);
+  const [storeCoords, setStoreCoords] = useState<{ latitude: number; longitude: number } | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -231,6 +233,27 @@ export default function OrderScreen() {
       return () => clearInterval(interval);
     }, [loadProducts])
   );
+
+  useEffect(() => {
+    if (!sellerId) {
+      setStoreCoords(null);
+      return;
+    }
+    void (async () => {
+      const { data } = await supabase
+        .from('profiles')
+        .select('latitude,longitude')
+        .eq('user_id', sellerId)
+        .maybeSingle();
+      const lat = data?.latitude;
+      const lng = data?.longitude;
+      if (typeof lat === 'number' && typeof lng === 'number' && Number.isFinite(lat) && Number.isFinite(lng)) {
+        setStoreCoords({ latitude: lat, longitude: lng });
+      } else {
+        setStoreCoords(null);
+      }
+    })();
+  }, [sellerId]);
 
   useEffect(() => {
     if (!sellerId) return;
@@ -366,7 +389,24 @@ export default function OrderScreen() {
 
   const cartCount = useMemo(() => cart.reduce((n, l) => n + l.qty, 0), [cart]);
 
-  const total = useMemo(() => cart.reduce((sum, l) => sum + l.product.price * l.qty, 0), [cart]);
+  const subtotal = useMemo(() => cart.reduce((sum, l) => sum + l.product.price * l.qty, 0), [cart]);
+
+  const containerCount = useMemo(() => countDeliveryContainers(cart), [cart]);
+
+  const deliveryQuote = useMemo(
+    () =>
+      computeDeliveryFee({
+        storeLat: storeCoords?.latitude ?? null,
+        storeLng: storeCoords?.longitude ?? null,
+        customerLat: coords?.latitude ?? null,
+        customerLng: coords?.longitude ?? null,
+        containerCount,
+      }),
+    [storeCoords, coords, containerCount]
+  );
+
+  const deliveryFee = deliveryQuote.fee;
+  const total = subtotal + deliveryFee;
 
   const gcashWallet = useMemo(() => checkoutWallets.find((w) => w.provider === 'GCash'), [checkoutWallets]);
   const mayaWallet = useMemo(() => checkoutWallets.find((w) => w.provider === 'Maya'), [checkoutWallets]);
@@ -478,6 +518,8 @@ export default function OrderScreen() {
           contact_number: contactNumber.trim(),
           latitude: coords?.latitude ?? null,
           longitude: coords?.longitude ?? null,
+          delivery_fee: deliveryFee,
+          delivery_distance_meters: deliveryQuote.distanceMeters,
           notes: notes.trim() ? notes.trim() : null,
           status: 'pending',
           payment_method: paymentMethod,
@@ -500,6 +542,17 @@ export default function OrderScreen() {
       }));
       const { error: itemsErr } = await supabase.from('order_items').insert(rows);
       if (itemsErr) throw itemsErr;
+
+      if (deliveryFee > 0) {
+        const { error: feeErr } = await supabase.from('order_items').insert({
+          order_id: order.id,
+          product_id: null,
+          product_name: 'Delivery fee',
+          unit_price: deliveryFee,
+          quantity: 1,
+        });
+        if (feeErr) throw feeErr;
+      }
 
       setQtyById({});
       setCustomerName((profileDefaults?.display_name ?? '').trim());
@@ -559,7 +612,7 @@ export default function OrderScreen() {
   const scrollBottomPad = step === 'menu' && cart.length > 0 ? 120 : theme.spacing.xl;
 
   return (
-    <Screen backgroundColor={PAGE_BG} style={{ padding: 0 }}>
+    <Screen style={{ padding: 0 }}>
       <NotificationsMenu visible={notifOpen} onClose={() => setNotifOpen(false)} />
 
       <Modal visible={proofModalOpen} transparent animationType="fade" onRequestClose={() => setProofModalOpen(false)}>
@@ -1143,6 +1196,57 @@ export default function OrderScreen() {
                       </Text>
                     ) : null}
 
+                    <View
+                      style={{
+                        marginTop: 10,
+                        padding: 12,
+                        borderRadius: 12,
+                        backgroundColor: ORDER_BLUE_SOFT,
+                        borderWidth: 1,
+                        borderColor: 'rgba(0,86,210,0.18)',
+                        gap: 6,
+                      }}
+                    >
+                      <Text weight="extrabold" style={{ fontSize: 15 }}>
+                        Delivery fee
+                      </Text>
+                      <Text variant="muted" style={{ fontSize: 13, lineHeight: 18 }}>
+                        Free within 500 m of the store. Beyond that: ₱5 per water refill (filled gallon). Empty
+                        containers / accessories are not charged delivery fee.
+                      </Text>
+                      <Text weight="semibold" style={{ fontSize: 13, lineHeight: 18 }}>
+                        {deliveryQuote.summary}
+                      </Text>
+                      {!storeCoords ? (
+                        <Text variant="muted" style={{ fontSize: 12 }}>
+                          Seller store GPS is not set — delivery fee stays ₱0 until the store adds location in Business
+                          Profile.
+                        </Text>
+                      ) : null}
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 }}>
+                        <Text weight="semibold">Subtotal</Text>
+                        <Text weight="extrabold">{formatMoney(subtotal)}</Text>
+                      </View>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                        <Text weight="semibold">Delivery</Text>
+                        <Text weight="extrabold">{deliveryFee > 0 ? formatMoney(deliveryFee) : 'Free'}</Text>
+                      </View>
+                      <View
+                        style={{
+                          flexDirection: 'row',
+                          justifyContent: 'space-between',
+                          paddingTop: 6,
+                          borderTopWidth: 1,
+                          borderTopColor: 'rgba(0,86,210,0.15)',
+                        }}
+                      >
+                        <Text weight="extrabold">Total</Text>
+                        <Text weight="extrabold" style={{ color: ORDER_BLUE, fontSize: 16 }}>
+                          {formatMoney(total)}
+                        </Text>
+                      </View>
+                    </View>
+
                     <View style={{ height: 1, backgroundColor: theme.colors.border, marginVertical: 14 }} />
 
                     <Text weight="extrabold" style={{ fontSize: 17 }}>
@@ -1480,21 +1584,15 @@ export default function OrderScreen() {
                     ) : null}
 
                     <View style={{ height: 1, backgroundColor: theme.colors.border, marginVertical: 8 }} />
-                    <Pressable
+                    <GradientPressable
                       onPress={placeOrder}
                       disabled={placing}
-                      style={{
-                        paddingVertical: 14,
-                        borderRadius: 14,
-                        backgroundColor: ORDER_BLUE,
-                        alignItems: 'center',
-                        opacity: placing ? 0.55 : 1,
-                      }}
+                      innerStyle={{ paddingVertical: 14, paddingHorizontal: 14 }}
                     >
-                      <Text weight="extrabold" style={{ color: '#fff', fontSize: 16 }}>
+                      <Text weight="extrabold" style={{ color: theme.colors.onPrimary, fontSize: 16 }}>
                         {placing ? 'Placing…' : 'Place order'}
                       </Text>
-                    </Pressable>
+                    </GradientPressable>
                   </View>
                 </Card>
               )}
@@ -1510,7 +1608,7 @@ export default function OrderScreen() {
               right: theme.spacing.md,
               bottom: theme.spacing.md,
               borderRadius: 16,
-              backgroundColor: ORDER_BLUE,
+              overflow: 'hidden',
               paddingVertical: 12,
               paddingHorizontal: 14,
               flexDirection: 'row',
@@ -1519,6 +1617,7 @@ export default function OrderScreen() {
               ...CARD_RAISE,
             }}
           >
+            <PrimaryGradient />
             <View style={{ position: 'relative' }}>
               <View
                 style={{
@@ -1546,10 +1645,10 @@ export default function OrderScreen() {
                     justifyContent: 'center',
                     paddingHorizontal: 6,
                     borderWidth: 2,
-                    borderColor: ORDER_BLUE,
+                    borderColor: theme.colors.primaryDark,
                   }}
                 >
-                  <Text weight="extrabold" style={{ fontSize: 11, color: ORDER_BLUE }}>
+                  <Text weight="extrabold" style={{ fontSize: 11, color: theme.colors.primaryDark }}>
                     {cartCount > 99 ? '99+' : String(cartCount)}
                   </Text>
                 </View>
@@ -1580,10 +1679,10 @@ export default function OrderScreen() {
                   borderRadius: 12,
                 }}
               >
-                <Text weight="extrabold" style={{ color: ORDER_BLUE, fontSize: 13 }}>
+                <Text weight="extrabold" style={{ color: theme.colors.primaryDark, fontSize: 13 }}>
                   Checkout
                 </Text>
-                <Ionicons name="chevron-forward" size={16} color={ORDER_BLUE} />
+                <Ionicons name="chevron-forward" size={16} color={theme.colors.primaryDark} />
               </Pressable>
             </View>
           </View>
@@ -1628,7 +1727,16 @@ function CheckoutPaymentOption({
           }}
         >
           {selected ? (
-            <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: ORDER_BLUE }} />
+            <View
+              style={{
+                width: 12,
+                height: 12,
+                borderRadius: 6,
+                overflow: 'hidden',
+              }}
+            >
+              <PrimaryGradient />
+            </View>
           ) : null}
         </View>
         <View style={{ flex: 1, minWidth: 0 }}>
@@ -1666,15 +1774,21 @@ function CategoryPill({
         paddingHorizontal: 14,
         borderRadius: 14,
         borderWidth: 1,
-        borderColor: active ? ORDER_BLUE : '#E0E3E8',
-        backgroundColor: active ? ORDER_BLUE : '#fff',
+        borderColor: active ? theme.colors.primaryDark : theme.colors.border,
+        backgroundColor: active ? 'transparent' : theme.colors.card,
+        overflow: 'hidden',
       }}
     >
-      <Ionicons name={icon} size={18} color={active ? '#fff' : ORDER_BLUE} />
+      {active ? <PrimaryGradient /> : null}
+      <Ionicons name={icon} size={18} color={active ? theme.colors.onPrimary : theme.colors.primaryDark} />
       <Text
         weight="extrabold"
         numberOfLines={1}
-        style={{ fontSize: 13, color: active ? '#fff' : ORDER_BLUE, flexShrink: 1 }}
+        style={{
+          fontSize: 13,
+          color: active ? theme.colors.onPrimary : theme.colors.primaryDark,
+          flexShrink: 1,
+        }}
       >
         {label}
       </Text>

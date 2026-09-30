@@ -1,6 +1,7 @@
 import { Pressable, ScrollView, View } from 'react-native';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { theme } from '../theme';
+import { PrimaryGradient } from './PrimaryGradient';
 import { Text } from './Text';
 
 export type ChipTab = { key: string; label: string };
@@ -30,15 +31,15 @@ export function ChipTabs({
                 paddingHorizontal: 14,
                 borderRadius: chipRadius,
                 borderWidth: 1,
-                borderColor: active ? 'rgba(18,101,214,0.30)' : theme.colors.border,
-                backgroundColor: active ? 'rgba(18,101,214,0.08)' : theme.colors.card,
+                borderColor: active ? theme.colors.primaryDark : theme.colors.border,
+                backgroundColor: active ? theme.colors.bgTint : theme.colors.card,
                 justifyContent: 'center',
               }}
             >
               <Text
                 variant="chip"
                 weight="extrabold"
-                style={{ color: active ? theme.colors.primary : theme.colors.muted }}
+                style={{ color: active ? theme.colors.primaryDark : theme.colors.muted }}
               >
                 {t.label}
               </Text>
@@ -50,10 +51,11 @@ export function ChipTabs({
                     height: 3,
                     marginTop: 6,
                     borderRadius: 4,
-                    backgroundColor: theme.colors.primary,
-                    opacity: 0.18,
+                    overflow: 'hidden',
                   }}
-                />
+                >
+                  <PrimaryGradient />
+                </Animated.View>
               ) : null}
             </Pressable>
           );
@@ -62,4 +64,3 @@ export function ChipTabs({
     </ScrollView>
   );
 }
-

@@ -256,21 +256,8 @@ export default function WalletsScreen() {
   const qrUrl = walletQrPublicUrl(row?.qr_image_path ?? null);
 
   return (
-    <Screen>
+    <Screen safeAreaEdges={['left', 'right']}>
       <ScrollView contentContainerStyle={{ paddingBottom: theme.spacing.xl }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <Pressable
-            onPress={() => router.back()}
-            style={{ padding: 10, borderRadius: 14, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: '#fff' }}
-          >
-            <Ionicons name="arrow-back" size={20} color={theme.colors.text} />
-          </Pressable>
-          <View style={{ flex: 1 }} />
-        </View>
-
-        <Text variant="title" weight="extrabold" style={{ marginTop: 10 }}>
-          E-wallet
-        </Text>
         <Text variant="muted" weight="semibold" style={{ marginTop: 4 }}>
           One GCash and one Maya per store. Turn each on only when ready for checkout.
         </Text>

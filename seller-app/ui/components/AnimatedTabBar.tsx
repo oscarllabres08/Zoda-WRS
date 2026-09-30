@@ -20,18 +20,16 @@ type TabDef = {
 };
 
 const INACTIVE_COLOR = theme.colors.muted;
-const INACTIVE_LABEL = 'rgba(11,27,58,0.72)';
+const INACTIVE_LABEL = theme.colors.tabInactiveLabel;
 
 const TABS: TabDef[] = [
-  { key: 'index', label: 'Dashboard', icon: 'home-outline', iconActive: 'home' },
   { key: 'orders', label: 'Orders', icon: 'list-outline', iconActive: 'list' },
-  { key: 'products', label: 'Product', icon: 'water-outline', iconActive: 'water' },
-  { key: 'customers', label: 'Customers', icon: 'people-outline', iconActive: 'people' },
+  { key: 'delivery', label: 'Delivery', icon: 'navigate-outline', iconActive: 'navigate' },
   { key: 'profile', label: 'Profile', icon: 'person-outline', iconActive: 'person' },
 ];
 
 /** Left → right tab order (Profile last = rightmost). */
-const TAB_ROUTE_ORDER = ['index', 'orders', 'products', 'customers', 'profile'] as const;
+const TAB_ROUTE_ORDER = ['orders', 'delivery', 'profile'] as const;
 
 function normalizeRouteName(name: string) {
   return name.replace(/\/index$/, '');
@@ -115,11 +113,13 @@ export function AnimatedTabBar({ state, descriptors, navigation }: BottomTabBarP
 
   const orderedRoutes = useMemo(() => {
     const order = [...TAB_ROUTE_ORDER];
-    return [...state.routes].sort((a, b) => {
-      const ia = order.indexOf(normalizeRouteName(a.name) as (typeof order)[number]);
-      const ib = order.indexOf(normalizeRouteName(b.name) as (typeof order)[number]);
-      return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
-    });
+    return [...state.routes]
+      .filter((r) => order.includes(normalizeRouteName(r.name) as (typeof order)[number]))
+      .sort((a, b) => {
+        const ia = order.indexOf(normalizeRouteName(a.name) as (typeof order)[number]);
+        const ib = order.indexOf(normalizeRouteName(b.name) as (typeof order)[number]);
+        return ia - ib;
+      });
   }, [state.routes]);
 
   const activeKey = state.routes[state.index]?.key;

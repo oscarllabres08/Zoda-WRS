@@ -1,10 +1,17 @@
 import { useCallback } from 'react';
 import { Tabs } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, getFocusedRouteNameFromRoute } from '@react-navigation/native';
+import type { ParamListBase, RouteProp } from '@react-navigation/native';
 
 import { useNotifications } from '../../providers/NotificationsProvider';
 import { theme } from '../../ui/theme';
 import { AnimatedTabBar } from '../../ui/components/AnimatedTabBar';
+
+function profileTabBarStyle(route: Partial<RouteProp<ParamListBase>>) {
+  const routeName = getFocusedRouteNameFromRoute(route as RouteProp<ParamListBase>) ?? 'index';
+  if (routeName === 'index') return undefined;
+  return { display: 'none' as const };
+}
 
 function NotificationsBadgeSync() {
   const { refresh } = useNotifications();
@@ -30,7 +37,13 @@ export default function TabLayout() {
       <Tabs.Screen name="index" options={{ title: 'Home' }} />
       <Tabs.Screen name="order" options={{ title: 'Order' }} />
       <Tabs.Screen name="rewards" options={{ title: 'Vouchers', tabBarLabel: 'Vouchers' }} />
-      <Tabs.Screen name="profile" options={{ title: 'Profile' }} />
+      <Tabs.Screen
+        name="profile"
+        options={({ route }) => ({
+          title: 'Profile',
+          tabBarStyle: profileTabBarStyle(route),
+        })}
+      />
       </Tabs>
     </>
   );

@@ -14,6 +14,7 @@ import { NotificationsMenu } from '../../ui/components/NotificationsMenu';
 import { useNotifications } from '../../providers/NotificationsProvider';
 
 const heroImage = require('../../assets/store.jpeg');
+const brandLogo = require('../../assets/logo.png');
 
 /** RN Web does not support `Image.resolveAssetSource` on the Image export (runtime error). */
 function heroAspectRatioFromAsset(source: typeof heroImage): number {
@@ -66,13 +67,20 @@ export default function HomeScreen() {
       <NotificationsMenu visible={notifOpen} onClose={() => setNotifOpen(false)} />
       <ScrollView contentContainerStyle={{ padding: theme.spacing.md, paddingBottom: theme.spacing.xl }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-          <View style={{ flex: 1 }}>
-            <Text variant="title" weight="extrabold" style={{ letterSpacing: -0.2 }}>
-              AQUABEAST
-            </Text>
-            <Text variant="muted" weight="regular" style={{ marginTop: 2 }}>
-              Water refilling station
-            </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 10 }}>
+            <Image
+              source={brandLogo}
+              style={{ width: 48, height: 48, borderRadius: 24 }}
+              accessibilityLabel="Zoda WRS logo"
+            />
+            <View style={{ flex: 1 }}>
+              <Text variant="title" weight="extrabold" style={{ letterSpacing: -0.2 }}>
+                ZODA WRS
+              </Text>
+              <Text variant="muted" weight="regular" style={{ marginTop: 2 }}>
+                Water refilling station
+              </Text>
+            </View>
           </View>
 
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
@@ -126,11 +134,11 @@ export default function HomeScreen() {
             overflow: 'hidden',
             borderWidth: 1,
             borderColor: theme.colors.border,
-            backgroundColor: '#0B1B3A',
+            backgroundColor: theme.colors.navyDeep,
             position: 'relative',
           }}
         >
-          <Image source={heroImage} style={{ width: '100%', height: '100%' }} resizeMode="cover" accessibilityLabel="Aquabeast store" />
+          <Image source={heroImage} style={{ width: '100%', height: '100%' }} resizeMode="cover" accessibilityLabel="Zoda WRS store" />
           {/* Web-like overlay layers (horizontal dark fade + subtle vertical highlight) */}
           <LinearGradient
             colors={['rgba(6,28,78,0.78)', 'rgba(6,28,78,0.55)', 'rgba(6,28,78,0.18)', 'rgba(6,28,78,0.00)']}
@@ -221,7 +229,7 @@ export default function HomeScreen() {
 
         <Card>
           <Text variant="h2" weight="extrabold">
-            Why choose Aquabeast?
+            Why choose Zoda WRS?
           </Text>
           <View style={{ marginTop: 10, gap: 10 }}>
             <View style={{ flexDirection: 'row', gap: 10 }}>

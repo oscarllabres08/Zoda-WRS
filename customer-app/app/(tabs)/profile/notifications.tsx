@@ -1,7 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Pressable, ScrollView, Switch, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { ScrollView, Switch, View } from 'react-native';
 
 import { useAuth } from '../../../providers/AuthProvider';
 import { supabase } from '../../../lib/supabase';
@@ -11,7 +9,6 @@ import { Text } from '../../../ui/components/Text';
 import { theme } from '../../../ui/theme';
 
 export default function NotificationsSettingsScreen() {
-  const router = useRouter();
   const { user } = useAuth();
   const [notifEnabled, setNotifEnabled] = useState(true);
   const [soundEnabled, setSoundEnabled] = useState(true);
@@ -47,22 +44,9 @@ export default function NotificationsSettingsScreen() {
   }
 
   return (
-    <Screen style={{ padding: 0 }}>
+    <Screen style={{ padding: 0 }} safeAreaEdges={['left', 'right']}>
       <ScrollView contentContainerStyle={{ padding: theme.spacing.md, paddingBottom: theme.spacing.xl }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <Pressable
-            onPress={() => router.back()}
-            style={{ padding: 10, borderRadius: 14, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: '#fff' }}
-          >
-            <Ionicons name="arrow-back" size={20} color={theme.colors.text} />
-          </Pressable>
-          <View style={{ flex: 1 }} />
-        </View>
-
-        <Card style={{ marginTop: theme.spacing.md }}>
-          <Text variant="title" weight="extrabold">
-            Notifications
-          </Text>
+        <Card>
           <Text variant="muted" style={{ marginTop: 4 }}>
             Manage pop-ups and sound alerts.
           </Text>

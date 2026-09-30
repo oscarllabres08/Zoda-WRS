@@ -1,26 +1,29 @@
 import { Tabs } from 'expo-router';
+import type { ParamListBase, RouteProp } from '@react-navigation/native';
+import { getFocusedRouteNameFromRoute } from '@react-navigation/native';
 
 import { useColorScheme } from '@/components/useColorScheme';
 import { theme } from '../../ui/theme';
 import { AnimatedTabBar } from '../../ui/components/AnimatedTabBar';
 
+function profileTabBarStyle(route: Partial<RouteProp<ParamListBase>>) {
+  const routeName = getFocusedRouteNameFromRoute(route as RouteProp<ParamListBase>) ?? 'index';
+  if (routeName === 'index') return undefined;
+  return { display: 'none' as const };
+}
+
 export default function TabLayout() {
-  const colorScheme = useColorScheme();
+  useColorScheme();
 
   return (
     <Tabs
+      initialRouteName="orders"
       tabBar={(props) => <AnimatedTabBar {...props} />}
       screenOptions={{
         tabBarActiveTintColor: theme.colors.primary,
         headerShown: false,
       }}>
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: 'Dashboard',
-          tabBarLabel: 'Dashboard',
-        }}
-      />
+      <Tabs.Screen name="index" options={{ href: null }} />
       <Tabs.Screen
         name="orders"
         options={{
@@ -29,26 +32,23 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="products"
+        name="delivery"
         options={{
-          title: 'Product',
-          tabBarLabel: 'Product',
+          title: 'Delivery',
+          tabBarLabel: 'Delivery',
         }}
       />
-      <Tabs.Screen
-        name="customers"
-        options={{
-          title: 'Customers',
-          tabBarLabel: 'Customers',
-        }}
-      />
+      <Tabs.Screen name="customers" options={{ href: null }} />
+      <Tabs.Screen name="notifications" options={{ href: null }} />
       <Tabs.Screen
         name="profile"
-        options={{
+        options={({ route }) => ({
           title: 'Profile',
           tabBarLabel: 'Profile',
-        }}
+          tabBarStyle: profileTabBarStyle(route),
+        })}
       />
+      <Tabs.Screen name="products" options={{ href: null }} />
     </Tabs>
   );
 }

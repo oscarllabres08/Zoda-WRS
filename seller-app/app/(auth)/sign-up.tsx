@@ -10,11 +10,12 @@ import { TextField } from '../../ui/components/TextField';
 import { Button } from '../../ui/components/Button';
 import { theme } from '../../ui/theme';
 
-const authLogo = require('../../assets/icon.jpeg');
+const authLogo = require('../../assets/logo.png');
 
 export default function SignUpScreen() {
   const router = useRouter();
   const [name, setName] = useState('');
+  const [contactNumber, setContactNumber] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -27,6 +28,10 @@ export default function SignUpScreen() {
     try {
       if (!name.trim()) {
         setError('Please enter your name.');
+        return;
+      }
+      if (!contactNumber.trim()) {
+        setError('Please enter your contact number.');
         return;
       }
       if (!email.trim() || !password.trim()) {
@@ -58,6 +63,7 @@ export default function SignUpScreen() {
 
       const { data: reg, error: regErr } = await supabase.rpc('register_pending_seller', {
         p_display_name: name.trim(),
+        p_phone: contactNumber.trim(),
       });
 
       if (regErr) {
@@ -75,7 +81,7 @@ export default function SignUpScreen() {
 
       // First ever registrant becomes the owner and can proceed immediately.
       if ((regObj as any)?.owner === true && (regObj as any)?.approved === true) {
-        router.replace('/(tabs)');
+        router.replace('/(tabs)/orders');
         return;
       }
 
@@ -126,6 +132,13 @@ export default function SignUpScreen() {
             <Card>
               <View style={{ gap: 10 }}>
                 <TextField label="Full name" value={name} onChangeText={setName} placeholder="Your name" />
+                <TextField
+                  label="Contact number"
+                  value={contactNumber}
+                  onChangeText={setContactNumber}
+                  placeholder="09xx xxx xxxx"
+                  inputMode="tel"
+                />
                 <TextField
                   label="Email"
                   value={email}

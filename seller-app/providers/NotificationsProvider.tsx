@@ -1,8 +1,15 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import * as Notifications from 'expo-notifications';
-import * as Device from 'expo-device';
 import { AppState, type AppStateStatus, Platform } from 'react-native';
 
+import {
+  NOTIF_CHANNEL_SILENT,
+  NOTIF_CHANNEL_SOUND,
+  ensureAndroidNotificationChannels,
+  notificationContentSound,
+} from '../lib/notificationChannels';
+import { registerSellerPushToken } from '../lib/registerPushToken';
+import { setNotificationRuntimePrefs } from '../lib/notificationRuntime';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './AuthProvider';
 
@@ -26,40 +33,16 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     soundEnabled: true,
   });
 
+  function applyPrefsToRuntime(p: { notificationsEnabled: boolean; soundEnabled: boolean }) {
+    prefsRef.current = p;
+    setNotificationRuntimePrefs(p);
+  }
+
   async function ensurePushTokenRegistered() {
     if (!user) return;
-    // FCM/APNs tokens require a real device.
-    if (!Device.isDevice) return;
-    // Avoid expo web push (requires VAPID); we only register native device tokens here.
-    if (Platform.OS === 'web') return;
-
-    try {
-      const perm = await Notifications.getPermissionsAsync();
-      const status = perm.status === 'granted' ? perm.status : (await Notifications.requestPermissionsAsync()).status;
-      if (status !== 'granted') {
-        console.warn('[push] Notification permission not granted; open system Settings → Apps → enable notifications.');
-        return;
-      }
-
-      const token = await Notifications.getDevicePushTokenAsync();
-      const deviceToken = token?.data ? String(token.data) : '';
-      if (!deviceToken) {
-        console.warn('[push] No device push token (check google-services.json / EAS build profile).');
-        return;
-      }
-
-      const { error } = await supabase.from('push_tokens').upsert(
-        {
-          user_id: user.id,
-          app: 'seller',
-          platform: Platform.OS,
-          token: deviceToken,
-        },
-        { onConflict: 'user_id,app,platform' }
-      );
-      if (error) console.warn('[push] push_tokens upsert failed:', error.message);
-    } catch (e) {
-      console.warn('[push] ensurePushTokenRegistered:', e instanceof Error ? e.message : String(e));
+    const res = await registerSellerPushToken(user.id);
+    if (!res.ok && __DEV__) {
+      console.warn('[push] registerSellerPushToken:', res.reason);
     }
   }
 
@@ -107,6 +90,10 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   }, [user?.id, refresh]);
 
   useEffect(() => {
+    void ensureAndroidNotificationChannels();
+  }, []);
+
+  useEffect(() => {
     void ensurePushTokenRegistered();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
@@ -133,13 +120,13 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
       if (!alive) return;
       if (error) {
         if (__DEV__) console.warn('[NotificationsProvider] profile prefs:', error.message);
-        prefsRef.current = { notificationsEnabled: true, soundEnabled: true };
+        applyPrefsToRuntime({ notificationsEnabled: true, soundEnabled: true });
         return;
       }
-      prefsRef.current = {
+      applyPrefsToRuntime({
         notificationsEnabled: (data as any)?.notifications_enabled ?? true,
         soundEnabled: (data as any)?.notification_sound_enabled ?? true,
-      };
+      });
     }
     loadPrefs();
     const channel = supabase
@@ -165,21 +152,41 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
           if (id && lastPopupIdRef.current !== id) {
             lastPopupIdRef.current = id;
 
-            // In-app toast (shows on any page). Auto dismiss after 3s.
             const rowData =
               n.data && typeof n.data === 'object' && !Array.isArray(n.data) ? (n.data as Record<string, unknown>) : {};
-            setToast({
-              id: id || String(Date.now()),
-              title: String(n.title ?? 'Notification'),
-              body: String(n.body ?? ''),
-              data: {
-                orderId: (n.order_id as string | undefined) ?? (rowData.orderId as string | undefined),
-                kind: String(n.kind ?? rowData.kind ?? ''),
-                pendingUserId: (rowData.pending_user_id as string | undefined) ?? (rowData.pendingUserId as string | undefined),
-              } as Record<string, unknown>,
-            });
-            if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-            toastTimerRef.current = setTimeout(() => setToast(null), 3000);
+            const toastData = {
+              orderId: (n.order_id as string | undefined) ?? (rowData.orderId as string | undefined),
+              kind: String(n.kind ?? rowData.kind ?? ''),
+              pendingUserId: (rowData.pending_user_id as string | undefined) ?? (rowData.pendingUserId as string | undefined),
+            } as Record<string, unknown>;
+
+            if (prefsRef.current.notificationsEnabled) {
+              setToast({
+                id: id || String(Date.now()),
+                title: String(n.title ?? 'Notification'),
+                body: String(n.body ?? ''),
+                data: toastData,
+              });
+              if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+              toastTimerRef.current = setTimeout(() => setToast(null), 3000);
+
+              try {
+                const soundOn = prefsRef.current.soundEnabled;
+                const channelId = soundOn ? NOTIF_CHANNEL_SOUND : NOTIF_CHANNEL_SILENT;
+                await Notifications.scheduleNotificationAsync({
+                  content: {
+                    title: String(n.title ?? 'Notification'),
+                    body: String(n.body ?? ''),
+                    sound: notificationContentSound(soundOn),
+                    data: toastData as Record<string, unknown>,
+                    ...(Platform.OS === 'android' ? { channelId } : {}),
+                  },
+                  trigger: null,
+                });
+              } catch (e) {
+                if (__DEV__) console.warn('[push] scheduleNotificationAsync:', e instanceof Error ? e.message : e);
+              }
+            }
           }
           void refresh();
         }

@@ -156,13 +156,7 @@ export default function BusinessProfileScreen() {
 
   if (!user || !storeProfileUserId) {
     return (
-      <Screen>
-        <Pressable onPress={() => router.back()} style={{ padding: 10, borderRadius: 14, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: '#fff', alignSelf: 'flex-start' }}>
-          <Ionicons name="arrow-back" size={20} color={theme.colors.text} />
-        </Pressable>
-        <Text variant="title" weight="extrabold" style={{ marginTop: 16 }}>
-          Business profile
-        </Text>
+      <Screen safeAreaEdges={['left', 'right']}>
         <Text variant="muted" style={{ marginTop: 8 }}>
           Could not load your workspace. Try signing in again.
         </Text>
@@ -171,18 +165,8 @@ export default function BusinessProfileScreen() {
   }
 
   return (
-    <Screen>
+    <Screen safeAreaEdges={['left', 'right']}>
       <ScrollView contentContainerStyle={{ paddingBottom: theme.spacing.xl }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <Pressable onPress={() => router.back()} style={{ padding: 10, borderRadius: 14, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: '#fff' }}>
-            <Ionicons name="arrow-back" size={20} color={theme.colors.text} />
-          </Pressable>
-          <View style={{ flex: 1 }} />
-        </View>
-
-        <Text variant="title" weight="extrabold" style={{ marginTop: 10 }}>
-          Business Profile
-        </Text>
         <Text variant="muted" weight="semibold" style={{ marginTop: 4 }}>
           {sellerTeamRole === 'staff'
             ? 'Update the store information for your team (same catalog customers see).'
@@ -230,7 +214,7 @@ export default function BusinessProfileScreen() {
 
           <Card>
             <View style={{ gap: 10 }}>
-              <TextField label="Store name" value={storeName} onChangeText={setStoreName} placeholder="Aquabeast WRS" />
+              <TextField label="Store name" value={storeName} onChangeText={setStoreName} placeholder="Zoda WRS" />
               <TextField label="Phone number" value={phone} onChangeText={setPhone} placeholder="09xx xxx xxxx" inputMode="tel" />
               <TextField label="Store address" value={storeAddress} onChangeText={setStoreAddress} placeholder="House no., street, barangay, city" />
               <TextField label="Business hours" value={businessHours} onChangeText={setBusinessHours} placeholder="8:00 AM - 8:00 PM" />

@@ -13,6 +13,7 @@ import { Card } from '../../ui/components/Card';
 import { Text } from '../../ui/components/Text';
 import { theme } from '../../ui/theme';
 import { SellerCustomersSkeleton } from '../../ui/components/Skeleton';
+import { orderGrandTotal } from '../../lib/orderTotal';
 
 type ProfileRow = {
   user_id: string;
@@ -33,6 +34,8 @@ type OrderAggRow = {
   status: string;
   payment_method: string | null;
   payment_settled: boolean | null;
+  order_items?: { product_name?: string | null; unit_price: number; quantity: number }[];
+  delivery_fee?: number | null;
 };
 
 type CustomerRow = {
@@ -44,6 +47,8 @@ type CustomerRow = {
   orderCount: number;
   lastOrderIso: string | null;
   hasUnpaidCredit: boolean;
+  unpaidDeliveredCount: number;
+  unpaidDeliveredTotal: number;
   /** Gallon/container na pinahiram, hindi pa naibalik (mula `seller_customer_container_balance`). */
   containersOutstanding: number;
   containerIdentifierNotes: string | null;
@@ -78,7 +83,9 @@ export default function CustomersScreen() {
 
     const { data: orders, error: ordErr } = await supabase
       .from('orders')
-      .select('customer_id,created_at,customer_name,contact_number,delivery_address,status,payment_method,payment_settled')
+      .select(
+        'customer_id,created_at,customer_name,contact_number,delivery_address,status,payment_method,payment_settled,delivery_fee,order_items(product_name,unit_price,quantity)'
+      )
       .eq('seller_id', businessId)
       .order('created_at', { ascending: false })
       .limit(1200);
@@ -115,6 +122,8 @@ export default function CustomersScreen() {
         orderCount: 0,
         lastOrderIso: null,
         hasUnpaidCredit: false,
+        unpaidDeliveredCount: 0,
+        unpaidDeliveredTotal: 0,
         containersOutstanding: 0,
         containerIdentifierNotes: null,
       });
@@ -132,9 +141,14 @@ export default function CustomersScreen() {
           orderCount: 0,
           lastOrderIso: null,
           hasUnpaidCredit: false,
+          unpaidDeliveredCount: 0,
+          unpaidDeliveredTotal: 0,
           containersOutstanding: 0,
           containerIdentifierNotes: null,
         } as CustomerRow);
+
+      const orderTotal = orderGrandTotal(o.order_items, o.delivery_fee);
+      const deliveredUnpaid = o.status === 'delivered' && o.payment_settled !== true;
 
       const nextCount = existing.orderCount + 1;
       const last = existing.lastOrderIso;
@@ -154,7 +168,9 @@ export default function CustomersScreen() {
         avatarPath: existing.avatarPath,
         orderCount: nextCount,
         lastOrderIso: nextLast,
-        hasUnpaidCredit: existing.hasUnpaidCredit || utangOpen,
+        hasUnpaidCredit: existing.hasUnpaidCredit || utangOpen || deliveredUnpaid,
+        unpaidDeliveredCount: existing.unpaidDeliveredCount + (deliveredUnpaid ? 1 : 0),
+        unpaidDeliveredTotal: existing.unpaidDeliveredTotal + (deliveredUnpaid ? orderTotal : 0),
         containersOutstanding: existing.containersOutstanding,
         containerIdentifierNotes: existing.containerIdentifierNotes,
       });
@@ -429,7 +445,22 @@ export default function CustomersScreen() {
                           {item.orderCount} orders
                         </Text>
                       </View>
-                      {item.hasUnpaidCredit ? (
+                      {item.unpaidDeliveredCount > 0 ? (
+                        <View
+                          style={{
+                            paddingVertical: 4,
+                            paddingHorizontal: 8,
+                            borderRadius: 999,
+                            borderWidth: 1,
+                            borderColor: 'rgba(239,68,68,0.35)',
+                            backgroundColor: 'rgba(239,68,68,0.10)',
+                          }}
+                        >
+                          <Text variant="chip" weight="extrabold" style={{ color: theme.colors.danger }}>
+                            {item.unpaidDeliveredCount} unpaid · ₱{item.unpaidDeliveredTotal.toFixed(2)}
+                          </Text>
+                        </View>
+                      ) : item.hasUnpaidCredit ? (
                         <View
                           style={{
                             paddingVertical: 4,

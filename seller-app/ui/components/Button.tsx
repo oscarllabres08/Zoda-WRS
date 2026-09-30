@@ -2,6 +2,7 @@ import type { PropsWithChildren, ReactNode } from 'react';
 import { Platform, Pressable, StyleSheet, type PressableProps, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { theme } from '../theme';
+import { PrimaryGradient } from './PrimaryGradient';
 import { Text } from './Text';
 
 type Variant = 'primary' | 'ghost' | 'danger';
@@ -21,12 +22,16 @@ export function Button({ variant = 'primary', title, leadingIcon, children, styl
 
   const colors = (() => {
     if (variant === 'danger') {
-      return { bg: 'rgba(239,68,68,0.14)', border: 'transparent', text: theme.colors.danger };
+      return { bg: 'rgba(229,72,77,0.12)', border: 'transparent', text: theme.colors.danger };
     }
     if (variant === 'ghost') {
-      return { bg: '#FFFFFF', border: theme.colors.border, text: theme.colors.text };
+      return {
+        bg: theme.colors.card,
+        border: theme.colors.primaryDark,
+        text: theme.colors.primaryDark,
+      };
     }
-    return { bg: theme.colors.primary, border: 'transparent', text: '#FFFFFF' };
+    return { bg: 'transparent', border: 'transparent', text: theme.colors.onPrimary };
   })();
 
   const basePressableStyle = {
@@ -36,8 +41,8 @@ export function Button({ variant = 'primary', title, leadingIcon, children, styl
     paddingHorizontal: 14,
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
-    backgroundColor: colors.bg,
-    borderWidth: variant === 'ghost' ? StyleSheet.hairlineWidth : 0,
+    backgroundColor: variant === 'primary' ? 'transparent' : colors.bg,
+    borderWidth: variant === 'ghost' ? 1.5 : 0,
     borderColor: variant === 'ghost' ? colors.border : 'transparent',
     ...(variant === 'danger'
       ? { elevation: 0, shadowOpacity: 0, shadowRadius: 0, shadowOffset: { width: 0, height: 0 } }
@@ -56,8 +61,8 @@ export function Button({ variant = 'primary', title, leadingIcon, children, styl
           variant === 'primary'
             ? { color: 'rgba(255,255,255,0.22)', borderless: true }
             : variant === 'danger'
-              ? { color: 'rgba(239,68,68,0.16)', borderless: true }
-              : { color: 'rgba(11,27,58,0.08)', borderless: true }
+              ? { color: 'rgba(229,72,77,0.16)', borderless: true }
+              : { color: 'rgba(6,58,122,0.1)', borderless: true }
         }
         onPressIn={(e) => {
           pressed.value = 1;
@@ -73,6 +78,7 @@ export function Button({ variant = 'primary', title, leadingIcon, children, styl
             : [basePressableStyle, typeof style === 'function' ? undefined : style]
         }
       >
+        {variant === 'primary' ? <PrimaryGradient /> : null}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           {leadingIcon}
           {typeof title === 'string' ? (
@@ -98,4 +104,3 @@ export function Button({ variant = 'primary', title, leadingIcon, children, styl
     </Animated.View>
   );
 }
-

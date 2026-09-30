@@ -1,6 +1,6 @@
 import { DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
-import { Stack, useRouter, useSegments } from 'expo-router';
+import { Stack, useRouter, useSegments, type Href } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useCallback, useEffect } from 'react';
 import 'react-native-reanimated';
@@ -19,6 +19,7 @@ import { AuthProvider, useAuth } from '../providers/AuthProvider';
 import { NotificationsProvider, useNotifications } from '../providers/NotificationsProvider';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text } from '../ui/components/Text';
+import { theme } from '../ui/theme';
 
 export { ErrorBoundary } from 'expo-router';
 
@@ -62,14 +63,14 @@ export default function RootLayout() {
       // `../notification.wav` is bundled via the expo-notifications config plugin.
       sound: 'notification',
       vibrationPattern: [0, 250, 250, 250],
-      lightColor: '#1265D6',
+      lightColor: theme.colors.primaryDark,
     });
     Notifications.setNotificationChannelAsync('silent', {
       name: 'silent',
       importance: Notifications.AndroidImportance.MAX,
       sound: null,
       vibrationPattern: [0],
-      lightColor: '#1265D6',
+      lightColor: theme.colors.primaryDark,
     });
   }, []);
 
@@ -77,12 +78,24 @@ export default function RootLayout() {
   return <RootLayoutNav />;
 }
 
+const zodaNavigationTheme = {
+  ...DefaultTheme,
+  colors: {
+    ...DefaultTheme.colors,
+    primary: theme.colors.primary,
+    background: theme.colors.bg,
+    card: theme.colors.card,
+    text: theme.colors.text,
+    border: theme.colors.border,
+  },
+};
+
 function RootLayoutNav() {
   return (
     <SafeAreaProvider>
       <AuthProvider>
         <NotificationsProvider>
-          <ThemeProvider value={DefaultTheme}>
+          <ThemeProvider value={zodaNavigationTheme}>
             <AuthGate />
           </ThemeProvider>
         </NotificationsProvider>
@@ -111,7 +124,7 @@ function AuthGate() {
   useEffect(() => {
     const sub = Notifications.addNotificationResponseReceivedListener((response) => {
       const data = response.notification.request.content.data as { orderId?: string } | undefined;
-      if (data?.orderId) router.push(orderHrefFor(data.orderId));
+      if (data?.orderId) router.push(orderHrefFor(data.orderId) as Href);
     });
     return () => sub.remove();
   }, [router, orderHrefFor]);
@@ -147,20 +160,20 @@ function AuthGate() {
               const data = (toast.data ?? {}) as { orderId?: string };
               dismissToast();
               if (data?.orderId) {
-                router.push(orderHrefFor(data.orderId));
+                router.push(orderHrefFor(data.orderId) as Href);
               }
             }}
             style={{
               width: '92%',
               maxWidth: 420,
               borderRadius: 16,
-              backgroundColor: '#FFFFFF',
+              backgroundColor: theme.colors.card,
               borderWidth: 1,
-              borderColor: 'rgba(231,238,249,0.95)',
+              borderColor: theme.colors.border,
               paddingVertical: 12,
               paddingHorizontal: 12,
               ...{
-                shadowColor: '#0B1B3A',
+                shadowColor: theme.shadow.ink,
                 shadowOpacity: 0.12,
                 shadowRadius: 18,
                 shadowOffset: { width: 0, height: 10 },

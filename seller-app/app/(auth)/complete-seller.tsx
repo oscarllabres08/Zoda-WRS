@@ -16,6 +16,7 @@ export default function CompleteSellerScreen() {
   const router = useRouter();
   const { user } = useAuth();
   const [name, setName] = useState('');
+  const [contactNumber, setContactNumber] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -23,10 +24,13 @@ export default function CompleteSellerScreen() {
     if (!user?.id) return;
     let alive = true;
     void (async () => {
-      const { data } = await supabase.from('profiles').select('display_name').eq('user_id', user.id).maybeSingle();
+      const { data } = await supabase.from('profiles').select('display_name,phone').eq('user_id', user.id).maybeSingle();
       if (!alive) return;
-      const dn = String((data as { display_name?: string } | null)?.display_name ?? '').trim();
+      const row = data as { display_name?: string; phone?: string | null } | null;
+      const dn = String(row?.display_name ?? '').trim();
+      const ph = String(row?.phone ?? '').trim();
       if (dn) setName(dn);
+      if (ph) setContactNumber(ph);
     })();
     return () => {
       alive = false;
@@ -54,9 +58,15 @@ export default function CompleteSellerScreen() {
         setLoading(false);
         return;
       }
+      if (!contactNumber.trim()) {
+        setError('Please enter your contact number.');
+        setLoading(false);
+        return;
+      }
 
       const { data: reg, error: regErr } = await supabase.rpc('register_pending_seller', {
         p_display_name: finalName,
+        p_phone: contactNumber.trim(),
       });
 
       if (regErr) {
@@ -72,7 +82,7 @@ export default function CompleteSellerScreen() {
 
       // First ever registrant becomes the owner and can proceed immediately.
       if ((regObj as any)?.owner === true && (regObj as any)?.approved === true) {
-        router.replace('/(tabs)');
+        router.replace('/(tabs)/orders');
         return;
       }
 
@@ -107,6 +117,13 @@ export default function CompleteSellerScreen() {
               value={name}
               onChangeText={setName}
               placeholder="As you want it shown to the administrator"
+            />
+            <TextField
+              label="Contact number"
+              value={contactNumber}
+              onChangeText={setContactNumber}
+              placeholder="09xx xxx xxxx"
+              inputMode="tel"
             />
             {error ? (
               <Text weight="bold" style={{ color: theme.colors.danger }}>

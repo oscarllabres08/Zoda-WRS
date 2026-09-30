@@ -4,13 +4,57 @@ This repo includes an Edge Function that sends **real Android push notifications
 
 ### 1) Deploy the function
 
-From the repo root:
+From the **repo root** (not `seller-app`). The `supabase` command only works after the CLI is installed or via `npx`.
+
+**Windows PowerShell (no global install):**
+
+```powershell
+cd "C:\Users\Oscar Jomer\Documents\WRS Aquabeast\Aquabeast"
+$env:NODE_OPTIONS="--use-system-ca"   # required on some Windows PCs (SSL / Transport error)
+```
+
+**If browser login fails** (`Transport error` after entering verification code), skip device login and use a **Personal Access Token**:
+
+1. Open https://supabase.com/dashboard/account/tokens → **Generate new token**
+2. PowerShell (paste token once; do not commit it):
+
+```powershell
+$env:SUPABASE_ACCESS_TOKEN="sbp_xxxxxxxx"
+npx supabase@latest login --token $env:SUPABASE_ACCESS_TOKEN
+npx supabase@latest functions deploy push-notify --project-ref nigvimeeqglqvgvtnbfy
+```
+
+Or one shot without storing login:
+
+```powershell
+$env:SUPABASE_ACCESS_TOKEN="sbp_xxxxxxxx"
+npx supabase@latest functions deploy push-notify --project-ref nigvimeeqglqvgvtnbfy
+```
+
+Optional global CLI: `scoop install supabase` or `npm install -g supabase`, then:
 
 ```bash
-supabase functions deploy push-notify
+supabase login
+supabase functions deploy push-notify --project-ref nigvimeeqglqvgvtnbfy
 ```
 
 Kapag nag-edit ka ng `supabase/functions/push-notify/index.ts`, kailangan mo ulit **`deploy`** bago lumabas ang bagong behavior/logs sa Dashboard.
+
+#### `TransportError` / `failed to list functions` (Windows)
+
+Ang **`sbp_` token ay OK** — ang CLI lang hindi makakonekta sa `api.supabase.com` (TLS/antivirus), kahit gumagana ang browser at `curl`.
+
+1. Siguraduhing naka-set: `$env:SUPABASE_ACCESS_TOKEN="sbp_..."` sa **same** PowerShell session bago deploy.
+2. Subukan **standalone CLI** (hindi `npx`): `scoop install supabase` o [Supabase CLI releases](https://github.com/supabase/cli/releases) → `supabase functions deploy push-notify --project-ref nigvimeeqglqvgvtnbfy`
+3. **`WARNING: Docker is not running`** — OK lang para sa remote deploy; hindi iyan ang root cause ng TransportError.
+4. Kung CLI pa rin fail → **Deploy sa Dashboard** (below).
+
+#### Deploy without CLI (Dashboard)
+
+1. Supabase Dashboard → **Edge Functions** → create / open **`push-notify`**.
+2. Copy-paste ang buong laman ng `supabase/functions/push-notify/index.ts` → **Deploy**.
+3. **Secrets** tab — same keys as step 2 below.
+4. SQL Editor — i-set ang `system_settings` (step 3 below).
 
 ### 2) Set Edge Function secrets
 
@@ -47,7 +91,7 @@ Once set, every `INSERT` into `public.notifications` will trigger a push (fire-a
 ### Notes
 
 - Tokens are read from `public.push_tokens` for the **recipient** user, filtered to `platform='android'` (works for both `app='seller'` and `app='customer'` rows).
-- Your app already defines Android channels in `seller-app/app/_layout.tsx`. FCM sends to `channel_id: "default"` so it matches your custom sound setup.
+- FCM uses channel `wrs_alerts_v3` and sound `notification` (repo-root `notification.wav`).
 
 ### Quick sanity test (script)
 

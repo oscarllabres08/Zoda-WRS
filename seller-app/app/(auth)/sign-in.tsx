@@ -11,7 +11,7 @@ import { TextField } from '../../ui/components/TextField';
 import { Button } from '../../ui/components/Button';
 import { theme } from '../../ui/theme';
 
-const authLogo = require('../../assets/icon.jpeg');
+const authLogo = require('../../assets/logo.png');
 
 export default function SignInScreen() {
   const router = useRouter();
@@ -40,7 +40,7 @@ export default function SignInScreen() {
       }
       const { error: err } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
       if (err) throw err;
-      router.replace('/(tabs)');
+      router.replace('/(tabs)/orders');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Login failed');
     } finally {
@@ -72,7 +72,7 @@ export default function SignInScreen() {
             Seller Login
           </Text>
           <Text variant="muted" style={{ marginTop: 4 }}>
-            Login to manage products and receive orders in realtime.
+            Field app for orders, delivery, customers, and alerts — synced with Admin & Customer apps.
           </Text>
 
           <View style={{ marginTop: theme.spacing.md, gap: theme.spacing.sm }}>

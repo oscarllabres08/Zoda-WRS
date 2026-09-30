@@ -16,7 +16,7 @@ type TabDef = {
 };
 
 const INACTIVE_COLOR = theme.colors.muted;
-const INACTIVE_LABEL = 'rgba(11,27,58,0.72)';
+const INACTIVE_LABEL = theme.colors.tabInactiveLabel;
 
 const TABS: TabDef[] = [
   { key: 'index', label: 'Home', icon: 'home-outline', iconActive: 'home' },

@@ -1,6 +1,6 @@
 <?php
 
-function build_reset_email_html(string $code, string $productName = 'Aquabeast WRS'): string {
+function build_reset_email_html(string $code, string $productName = 'Zoda WRS'): string {
   $safeCode = htmlspecialchars($code, ENT_QUOTES, 'UTF-8');
   $safeProduct = htmlspecialchars($productName, ENT_QUOTES, 'UTF-8');
 

@@ -13,7 +13,7 @@ type Props = ViewProps & {
 export function GradientCard({
   children,
   style,
-  colors = ['#082D73', '#0A45C9', '#4AA3FF'] as const,
+  colors = [theme.colors.navyDeep, theme.colors.primaryDark, theme.colors.accent] as const,
   locations = [0, 0.6, 1] as const,
   start = { x: 0.0, y: 0.55 },
   end = { x: 1, y: 0.2 },

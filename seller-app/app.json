@@ -1,21 +1,21 @@
 {
   "expo": {
-    "name": "Aquabeast WRS Owner",
+    "name": "Zoda WRS Owner",
     "slug": "seller-app",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "../icon.jpeg",
+    "icon": "./assets/icon.png",
     "scheme": "sellerapp",
     "userInterfaceStyle": "automatic",
     "androidStatusBar": {
       "barStyle": "dark-content",
-      "backgroundColor": "#E6F4FE",
+      "backgroundColor": "#E8F4FC",
       "translucent": false
     },
     "splash": {
-      "image": "../icon.jpeg",
+      "image": "./assets/icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#E6F4FE"
+      "backgroundColor": "#FFFFFF"
     },
     "ios": {
       "supportsTablet": true,
@@ -25,11 +25,11 @@
       "softwareKeyboardLayoutMode": "resize",
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "../icon.jpeg"
+        "backgroundColor": "#FFFFFF",
+        "foregroundImage": "./assets/icon.png"
       },
       "package": "com.aquabeast.sellerapp",
-      "versionCode": 1,
+      "versionCode": 3,
       "predictiveBackGestureEnabled": false,
       "permissions": [
         "android.permission.POST_NOTIFICATIONS",
@@ -40,7 +40,7 @@
     "web": {
       "bundler": "metro",
       "output": "static",
-      "favicon": "../icon.jpeg"
+      "favicon": "./assets/icon.png"
     },
     "plugins": [
       "expo-router",
@@ -49,7 +49,8 @@
         {
           "sounds": [
             "../notification.wav"
-          ]
+          ],
+          "defaultChannel": "wrs_alerts_v3"
         }
       ]
     ],

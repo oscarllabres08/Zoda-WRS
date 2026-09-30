@@ -14,8 +14,8 @@ import { Text } from '../../ui/components/Text';
 import { Button } from '../../ui/components/Button';
 import { theme } from '../../ui/theme';
 
-const PRIMARY = '#0056D2';
-const SOFT = 'rgba(0, 86, 210, 0.10)';
+const PRIMARY = theme.colors.primary;
+const SOFT = theme.colors.bgTint;
 
 type VoucherRow = {
   id: string;
@@ -52,6 +52,7 @@ export default function RewardsTabScreen() {
   const [resultOpen, setResultOpen] = useState(false);
   const [lastCode, setLastCode] = useState<string | null>(null);
   const [lastExpires, setLastExpires] = useState<string | null>(null);
+  const [loyaltyProgramActive, setLoyaltyProgramActive] = useState(true);
 
   const load = useCallback(async () => {
     if (authLoading || !user) return;
@@ -65,6 +66,17 @@ export default function RewardsTabScreen() {
       setPoints(summary.totalPoints);
       if (!summary.redeemSellerId && summary.totalPoints === 0) {
         throw new Error('No seller configured.');
+      }
+
+      if (summary.redeemSellerId) {
+        const { data: storeProf } = await supabase
+          .from('profiles')
+          .select('loyalty_points_active')
+          .eq('user_id', summary.redeemSellerId)
+          .maybeSingle();
+        setLoyaltyProgramActive(storeProf?.loyalty_points_active === true);
+      } else {
+        setLoyaltyProgramActive(false);
       }
 
       const { data: vrows, error: vErr } = await supabase
@@ -105,6 +117,8 @@ export default function RewardsTabScreen() {
       if (!raw?.ok) {
         if (raw?.error === 'insufficient_points') {
           setErr('You need at least 10 points in one store balance to redeem.');
+        } else if (raw?.error === 'loyalty_inactive') {
+          setErr('The store has paused loyalty redemptions for now. Your points are saved.');
         } else {
           setErr('Could not redeem. Try again.');
         }
@@ -221,6 +235,15 @@ export default function RewardsTabScreen() {
           </Card>
         ) : null}
 
+        {!loading && !loyaltyProgramActive ? (
+          <Card style={{ marginTop: 12, borderColor: theme.colors.warning, backgroundColor: 'rgba(245,158,11,0.08)' }}>
+            <Text weight="extrabold">Loyalty promo is paused</Text>
+            <Text variant="muted" style={{ marginTop: 6 }}>
+              The store is not awarding new points or redemptions right now. Your balance is saved — check back later.
+            </Text>
+          </Card>
+        ) : null}
+
         <GradientCard style={{ marginTop: 18 }}>
           <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
             <View style={{ flex: 1 }}>
@@ -263,12 +286,14 @@ export default function RewardsTabScreen() {
           <View style={{ marginTop: 18 }}>
             <Pressable
               onPress={onRedeem}
-              disabled={redeeming || loading || !canRedeemSegment || !sellerId}
+              disabled={redeeming || loading || !canRedeemSegment || !sellerId || !loyaltyProgramActive}
               style={{
                 paddingVertical: 14,
                 borderRadius: 14,
                 backgroundColor:
-                  redeeming || loading || !canRedeemSegment || !sellerId ? 'rgba(255,255,255,0.35)' : '#fff',
+                  redeeming || loading || !canRedeemSegment || !sellerId || !loyaltyProgramActive
+                    ? 'rgba(255,255,255,0.35)'
+                    : '#fff',
                 alignItems: 'center',
               }}
             >

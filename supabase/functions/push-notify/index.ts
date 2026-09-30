@@ -124,6 +124,36 @@ async function getGoogleAccessTokenFromServiceAccount(serviceAccountJson: string
   return String((body as any).access_token ?? "");
 }
 
+const FCM_CHANNEL_SOUND = "wrs_alerts_v3";
+const FCM_CHANNEL_SILENT = "wrs_silent_v1";
+const FCM_SOUND_RAW = "notification";
+
+async function supabaseSelectProfileNotifPrefs(recipientId: string) {
+  const supabaseUrl = getEnvAny(["SB_URL", "SUPABASE_URL"]);
+  const serviceKey = getEnvAny(["SB_SERVICE_ROLE_KEY", "SUPABASE_SERVICE_ROLE_KEY"]);
+
+  const url = new URL("/rest/v1/profiles", supabaseUrl);
+  url.searchParams.set("select", "notifications_enabled,notification_sound_enabled");
+  url.searchParams.set("user_id", `eq.${recipientId}`);
+  url.searchParams.set("limit", "1");
+
+  const res = await fetch(url.toString(), {
+    headers: {
+      apikey: serviceKey,
+      authorization: `Bearer ${serviceKey}`,
+    },
+  });
+  const data = await res.json().catch(() => []);
+  if (!res.ok || !Array.isArray(data) || !data.length) {
+    return { notificationsEnabled: true, soundEnabled: true };
+  }
+  const row = data[0] as { notifications_enabled?: boolean | null; notification_sound_enabled?: boolean | null };
+  return {
+    notificationsEnabled: row.notifications_enabled ?? true,
+    soundEnabled: row.notification_sound_enabled ?? true,
+  };
+}
+
 async function supabaseSelectPushTokens(recipientId: string) {
   // Supabase reserves env names that start with SUPABASE_, so we prefer SB_*.
   const supabaseUrl = getEnvAny(["SB_URL", "SUPABASE_URL"]);
@@ -152,7 +182,7 @@ function inferTargetApp(payload: WebhookPayload): "seller" | "customer" | null {
   if (explicit === "seller" || explicit === "customer") return explicit;
 
   const kind = String(payload?.kind ?? "");
-  if (kind === "new_order" || kind === "seller_registration_pending") return "seller";
+  if (kind === "new_order" || kind === "seller_registration_pending" || kind === "order_activity") return "seller";
   if (kind === "order_status" || kind === "seller_reminder" || kind === "loyalty_points") return "customer";
   return null;
 }
@@ -164,6 +194,7 @@ async function sendFcmMessage({
   title,
   body,
   data,
+  soundEnabled,
 }: {
   fcmProjectId: string;
   accessToken: string;
@@ -171,8 +202,17 @@ async function sendFcmMessage({
   title: string;
   body: string;
   data: Record<string, string>;
+  soundEnabled: boolean;
 }) {
   const url = `https://fcm.googleapis.com/v1/projects/${encodeURIComponent(fcmProjectId)}/messages:send`;
+  const channelId = soundEnabled ? FCM_CHANNEL_SOUND : FCM_CHANNEL_SILENT;
+  const androidNotification: Record<string, string> = {
+    channel_id: channelId,
+  };
+  if (soundEnabled) {
+    androidNotification.sound = FCM_SOUND_RAW;
+  }
+
   const res = await fetch(url, {
     method: "POST",
     headers: {
@@ -186,10 +226,16 @@ async function sendFcmMessage({
         data,
         android: {
           priority: "HIGH",
+          ttl: "86400s",
+          direct_boot_ok: true,
           notification: {
-            // Your app already created the "default" channel with `notification.wav`
-            channel_id: "default",
-            sound: "notification",
+            ...androidNotification,
+            title,
+            body,
+            notification_priority: "PRIORITY_MAX",
+            visibility: "PUBLIC",
+            default_vibrate_timings: true,
+            default_sound: soundEnabled,
           },
         },
       },
@@ -229,6 +275,8 @@ Deno.serve(async (req) => {
     const fcmProjectId = getEnv("FCM_PROJECT_ID");
     const saJson = getEnv("FCM_SERVICE_ACCOUNT_JSON");
     const accessToken = await getGoogleAccessTokenFromServiceAccount(saJson);
+    const notifPrefs = await supabaseSelectProfileNotifPrefs(recipientId);
+    const soundEnabled = notifPrefs.notificationsEnabled && notifPrefs.soundEnabled;
 
     const data: Record<string, string> = {
       recipientId,
@@ -253,6 +301,7 @@ Deno.serve(async (req) => {
           title,
           body,
           data,
+          soundEnabled,
         });
         results.push({ token: t.token, ok: true });
       } catch (e) {

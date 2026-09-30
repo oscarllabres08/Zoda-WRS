@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ComponentProps } from 'react';
-import { Image, Pressable, ScrollView, Switch, View } from 'react-native';
+import { Image, Pressable, ScrollView, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -16,12 +16,11 @@ import { Button } from '../../../ui/components/Button';
 import { theme } from '../../../ui/theme';
 import { SellerProfileSkeleton } from '../../../ui/components/Skeleton';
 import { LogoutConfirmModal } from '../../../ui/components/LogoutConfirmModal';
+import { SellerScreenHeader } from '../../../ui/components/SellerScreenHeader';
 
 type ProfileRow = {
   store_name: string | null;
   store_logo_url: string | null;
-  notifications_enabled: boolean | null;
-  notification_sound_enabled: boolean | null;
 };
 
 const BUCKET = 'wrs-assets';
@@ -33,9 +32,6 @@ export default function ProfileHomeScreen() {
   const [error, setError] = useState<string | null>(null);
   const [profile, setProfile] = useState<ProfileRow | null>(null);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
-  const [notifEnabled, setNotifEnabled] = useState(true);
-  const [soundEnabled, setSoundEnabled] = useState(true);
-  const [prefsSaving, setPrefsSaving] = useState(false);
   const [ownerStore, setOwnerStore] = useState<{ store_name: string | null; store_logo_url: string | null } | null>(null);
   const [logoutModalOpen, setLogoutModalOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
@@ -56,7 +52,7 @@ export default function ProfileHomeScreen() {
     setLoading(true);
     const { data, error: pErr } = await supabase
       .from('profiles')
-      .select('store_name,store_logo_url,notifications_enabled,notification_sound_enabled')
+      .select('store_name,store_logo_url')
       .eq('user_id', userId)
       .single();
     if (pErr) {
@@ -68,8 +64,6 @@ export default function ProfileHomeScreen() {
     const row = (data ?? null) as ProfileRow | null;
     setProfile(row);
     setLogoUrl(row?.store_logo_url ?? null);
-    setNotifEnabled(row?.notifications_enabled ?? true);
-    setSoundEnabled(row?.notification_sound_enabled ?? true);
     setLoading(false);
   }, [user?.id]);
 
@@ -104,15 +98,6 @@ export default function ProfileHomeScreen() {
     };
   }, [businessId, sellerTeamRole]);
 
-  async function updatePrefs(next: { notifications_enabled?: boolean; notification_sound_enabled?: boolean }) {
-    if (!user) return;
-    setPrefsSaving(true);
-    setError(null);
-    const { error: upErr } = await supabase.from('profiles').update(next).eq('user_id', user.id);
-    if (upErr) setError(upErr.message);
-    setPrefsSaving(false);
-  }
-
   return (
     <Screen>
       <LogoutConfirmModal
@@ -132,9 +117,7 @@ export default function ProfileHomeScreen() {
         }}
       />
       <ScrollView contentContainerStyle={{ paddingBottom: theme.spacing.xl }}>
-        <Text variant="title" weight="extrabold">
-          Profile
-        </Text>
+        <SellerScreenHeader subtitle="Profile" />
 
         {loading ? <SellerProfileSkeleton /> : null}
         {error ? (
@@ -191,68 +174,31 @@ export default function ProfileHomeScreen() {
               </View>
             </GradientCard>
 
+            {isStoreOwner ? (
+              <Card>
+                <Text weight="semibold">Store back-office</Text>
+                <Text variant="muted" weight="semibold" style={{ marginTop: 4 }}>
+                  Business profile, e-wallets, vouchers, POS, inventory, and staff — use the Zoda WRS Admin website on desktop.
+                </Text>
+              </Card>
+            ) : null}
+
             <Card>
               <MenuRow
-                title="Business Profile"
-                icon="storefront-outline"
-                onPress={() => router.push('/(tabs)/profile/business')}
-              />
-              <Divider />
-              <MenuRow title="E-wallet accounts" icon="wallet-outline" onPress={() => router.push('/(tabs)/profile/wallets')} />
-              <Divider />
-              {isStoreOwner ? (
-                <>
-                  <MenuRow
-                    title="Manage accounts"
-                    icon="people-outline"
-                    onPress={() => router.push('/(tabs)/profile/registrations')}
-                  />
-                  <Divider />
-                </>
-              ) : null}
-              <MenuRow
-                title="Voucher verification"
-                icon="ticket-outline"
-                onPress={() => router.push('/(tabs)/profile/voucher-verify')}
+                title="Customers list"
+                icon="people-outline"
+                onPress={() => router.push('/(tabs)/profile/customers')}
               />
               <Divider />
               <MenuRow title="Account settings" icon="settings-outline" onPress={() => router.push('/(tabs)/profile/settings')} />
               <Divider />
               <MenuRow title="Help Center" icon="help-circle-outline" onPress={() => router.push('/(tabs)/profile/help')} />
-            </Card>
-
-            <Card>
-              <Text variant="h2" weight="extrabold">
-                Notifications
-              </Text>
-              <Text variant="muted" weight="semibold" style={{ marginTop: 4 }}>
-                Manage pop-ups and sound alerts.
-              </Text>
-
-              <View style={{ marginTop: 12 }}>
-                <ToggleRow
-                  title="Receive notifications"
-                  subtitle="Show a pop-up when new orders arrive."
-                  value={notifEnabled}
-                  disabled={prefsSaving}
-                  onChange={(v) => {
-                    setNotifEnabled(v);
-                    if (!v) setSoundEnabled(false);
-                    updatePrefs({ notifications_enabled: v, notification_sound_enabled: v ? soundEnabled : false });
-                  }}
-                />
-                <Divider />
-                <ToggleRow
-                  title="Notification sound"
-                  subtitle="Play sound for new notifications."
-                  value={soundEnabled}
-                  disabled={!notifEnabled || prefsSaving}
-                  onChange={(v) => {
-                    setSoundEnabled(v);
-                    updatePrefs({ notification_sound_enabled: v });
-                  }}
-                />
-              </View>
+              <Divider />
+              <MenuRow
+                title="Notification settings"
+                icon="notifications-outline"
+                onPress={() => router.push('/(tabs)/profile/notification-settings')}
+              />
             </Card>
 
             <Card>
@@ -298,38 +244,6 @@ function MenuRow({ title, icon, onPress }: { title: string; icon: IonIconName; o
       </Text>
       <Ionicons name="chevron-forward" size={18} color={theme.colors.muted} />
     </Pressable>
-  );
-}
-
-function ToggleRow({
-  title,
-  subtitle,
-  value,
-  disabled,
-  onChange,
-}: {
-  title: string;
-  subtitle: string;
-  value: boolean;
-  disabled?: boolean;
-  onChange: (v: boolean) => void;
-}) {
-  return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12, gap: 12 }}>
-      <View style={{ flex: 1 }}>
-        <Text weight="semibold">{title}</Text>
-        <Text variant="muted" weight="semibold" style={{ marginTop: 2 }}>
-          {subtitle}
-        </Text>
-      </View>
-      <Switch
-        value={value}
-        disabled={disabled}
-        onValueChange={onChange}
-        trackColor={{ false: 'rgba(10,27,55,0.12)', true: 'rgba(18,101,214,0.35)' }}
-        thumbColor={value ? theme.colors.primary : '#fff'}
-      />
-    </View>
   );
 }
 

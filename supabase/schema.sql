@@ -597,27 +597,46 @@
   after insert on public.order_items
   for each row execute function public.notify_seller_new_order();
 
-  -- Create notification when seller updates order status (customer inbox)
-  create or replace function public.notify_customer_order_status()
+  -- Create notification when order status changes (customer inbox + seller/admin inbox).
+  create or replace function public.notify_order_status_change()
   returns trigger
   language plpgsql
   security definer
   set search_path = public
   set row_security = off
   as $$
+  declare
+    v_status_label text;
   begin
     if new.status is distinct from old.status then
+      v_status_label := replace(new.status::text, '_', ' ');
+
       insert into public.notifications(recipient_id, order_id, kind, title, body, data)
       values (
         new.customer_id,
         new.id,
         'order_status',
         'Order update',
-        'Your order is now ' || replace(new.status::text, '_', ' ') || '.',
+        'Your order is now ' || v_status_label || '.',
         jsonb_build_object(
           'orderId', new.id,
           'app', 'customer',
           'status', new.status::text
+        )
+      );
+
+      insert into public.notifications(recipient_id, order_id, kind, title, body, data)
+      values (
+        new.seller_id,
+        new.id,
+        'order_activity',
+        'Order ' || v_status_label,
+        coalesce(new.customer_name, 'Customer') || '''s order is now ' || v_status_label || '.',
+        jsonb_build_object(
+          'orderId', new.id,
+          'app', 'seller',
+          'status', new.status::text,
+          'customerName', new.customer_name
         )
       );
     end if;
@@ -626,9 +645,10 @@
   $$;
 
   drop trigger if exists orders_notify_customer_status on public.orders;
-  create trigger orders_notify_customer_status
+  drop trigger if exists orders_notify_order_status_change on public.orders;
+  create trigger orders_notify_order_status_change
   after update of status on public.orders
-  for each row execute function public.notify_customer_order_status();
+  for each row execute function public.notify_order_status_change();
 
   -- E-wallet accounts (seller-managed)
   create table if not exists public.ewallet_accounts (

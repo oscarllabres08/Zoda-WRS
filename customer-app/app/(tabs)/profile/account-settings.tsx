@@ -1,7 +1,5 @@
 import { useState } from 'react';
-import { Pressable, ScrollView, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { ScrollView, View } from 'react-native';
 
 import { useAuth } from '../../../providers/AuthProvider';
 import { supabase } from '../../../lib/supabase';
@@ -13,7 +11,6 @@ import { Button } from '../../../ui/components/Button';
 import { theme } from '../../../ui/theme';
 
 export default function AccountSettingsScreen() {
-  const router = useRouter();
   const { user } = useAuth();
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -62,22 +59,9 @@ export default function AccountSettingsScreen() {
   }
 
   return (
-    <Screen style={{ padding: 0 }}>
+    <Screen style={{ padding: 0 }} safeAreaEdges={['left', 'right']}>
       <ScrollView contentContainerStyle={{ padding: theme.spacing.md, paddingBottom: theme.spacing.xl }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <Pressable
-            onPress={() => router.back()}
-            style={{ padding: 10, borderRadius: 14, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: '#fff' }}
-          >
-            <Ionicons name="arrow-back" size={20} color={theme.colors.text} />
-          </Pressable>
-          <View style={{ flex: 1 }} />
-        </View>
-
-        <Card style={{ marginTop: theme.spacing.md }}>
-          <Text variant="title" weight="extrabold">
-            Account settings
-          </Text>
+        <Card>
           <Text variant="muted" style={{ marginTop: 4 }}>
             Update your password.
           </Text>

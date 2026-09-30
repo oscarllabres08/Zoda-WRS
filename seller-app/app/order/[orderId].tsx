@@ -5,6 +5,7 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 
 import { publicWrsAssetUrl } from '../../lib/publicAssetUrl';
+import { markOrderViewed } from '../../lib/viewedOrders';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../providers/AuthProvider';
 import { Screen } from '../../ui/components/Screen';
@@ -145,6 +146,8 @@ export default function OrderDetailsScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [updating, setUpdating] = useState(false);
+  const [paymentUpdating, setPaymentUpdating] = useState(false);
+  const [payConfirmOpen, setPayConfirmOpen] = useState(false);
   const [sellerCoords, setSellerCoords] = useState<{ latitude: number; longitude: number } | null>(null);
   const [customerAvatarPath, setCustomerAvatarPath] = useState<string | null>(null);
   const [containerBalance, setContainerBalance] = useState<ContainerBalanceRow | null>(null);
@@ -156,6 +159,11 @@ export default function OrderDetailsScreen() {
   const [lendNumbers, setLendNumbers] = useState('');
   const [returnQty, setReturnQty] = useState('');
   const [proofOpen, setProofOpen] = useState(false);
+
+  useEffect(() => {
+    if (!businessId || !orderId) return;
+    void markOrderViewed(businessId, orderId);
+  }, [businessId, orderId]);
 
   const refreshContainers = useCallback(async (customerId: string, sellerBizId: string) => {
     setContainersLoading(true);
@@ -378,24 +386,33 @@ export default function OrderDetailsScreen() {
   async function markOrderPaid() {
     if (!order || order.payment_settled === true) return;
     const pm = (order.payment_method ?? '').toLowerCase();
-    setUpdating(true);
+    setPaymentUpdating(true);
     setError(null);
     try {
-      if (pm === 'utang') {
-        const { error: err } = await supabase.rpc('seller_mark_order_utang_paid', { p_order_id: order.id });
-        if (err) throw err;
-      } else {
-        const { error: err } = await supabase.from('orders').update({ payment_settled: true }).eq('id', order.id);
-        if (err) throw err;
+      const { error: paidErr } = await supabase.rpc('seller_mark_order_paid', { p_order_id: order.id });
+      if (paidErr) {
+        const rpcMissing =
+          paidErr.code === 'PGRST202' ||
+          paidErr.message.includes('seller_mark_order_paid') ||
+          paidErr.message.includes('schema cache');
+        if (!rpcMissing) throw paidErr;
+        if (pm === 'utang') {
+          const { error: utangErr } = await supabase.rpc('seller_mark_order_utang_paid', { p_order_id: order.id });
+          if (utangErr) throw utangErr;
+        } else {
+          const { error: directErr } = await supabase.from('orders').update({ payment_settled: true }).eq('id', order.id);
+          if (directErr) throw directErr;
+        }
       }
       setOrder((o) => (o ? { ...o, payment_settled: true } : o));
+      setPayConfirmOpen(false);
       await load('soft');
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Failed to update payment';
       setError(msg);
       Alert.alert('Could not mark paid', msg);
     } finally {
-      setUpdating(false);
+      setPaymentUpdating(false);
     }
   }
 
@@ -526,6 +543,47 @@ export default function OrderDetailsScreen() {
                   <Text variant="muted">No image available.</Text>
                 </View>
               )}
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal visible={payConfirmOpen} transparent animationType="fade" onRequestClose={() => setPayConfirmOpen(false)}>
+        <Pressable
+          style={{ flex: 1, backgroundColor: 'rgba(11,27,58,0.48)', justifyContent: 'center', padding: theme.spacing.md }}
+          onPress={() => setPayConfirmOpen(false)}
+        >
+          <Pressable onPress={() => {}} style={{ width: '100%', maxWidth: 400, alignSelf: 'center' }}>
+            <View
+              style={{
+                borderRadius: 18,
+                backgroundColor: '#FFFFFF',
+                borderWidth: 1,
+                borderColor: theme.colors.border,
+                padding: theme.spacing.lg,
+                ...theme.shadow.card,
+              }}
+            >
+              <Text variant="h2" weight="extrabold">
+                Mark as paid?
+              </Text>
+              <Text variant="muted" style={{ marginTop: 10, lineHeight: 20 }}>
+                {(order?.payment_method ?? '').toLowerCase() === 'utang'
+                  ? 'Tukuyin na nabayaran na ng customer ang utang para sa order na ito.'
+                  : 'Tukuyin na natanggap mo na ang bayad para sa order na ito. Kasama na ito sa sales report.'}
+              </Text>
+              <View style={{ flexDirection: 'row', gap: 10, marginTop: 18 }}>
+                <View style={{ flex: 1 }}>
+                  <Button title="Cancel" variant="ghost" onPress={() => setPayConfirmOpen(false)} disabled={paymentUpdating} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Button
+                    title={paymentUpdating ? 'Saving…' : 'Mark paid'}
+                    onPress={() => void markOrderPaid()}
+                    disabled={paymentUpdating}
+                  />
+                </View>
+              </View>
             </View>
           </Pressable>
         </Pressable>
@@ -851,21 +909,9 @@ export default function OrderDetailsScreen() {
                 {order.payment_settled !== true ? (
                   <View style={{ marginTop: 12 }}>
                     <Button
-                      title={updating ? 'Saving…' : 'Mark as paid'}
-                      onPress={() => {
-                        const utang = (order.payment_method ?? '').toLowerCase() === 'utang';
-                        Alert.alert(
-                          'Mark as paid?',
-                          utang
-                            ? 'Tukuyin na nabayaran na ng customer ang utang para sa order na ito.'
-                            : 'Tukuyin na natanggap mo na ang bayad para sa order na ito. Kasama na ito sa sales report.',
-                          [
-                            { text: 'Cancel', style: 'cancel' },
-                            { text: 'Mark paid', onPress: () => void markOrderPaid() },
-                          ]
-                        );
-                      }}
-                      disabled={updating}
+                      title={paymentUpdating ? 'Saving…' : 'Mark as paid'}
+                      onPress={() => setPayConfirmOpen(true)}
+                      disabled={paymentUpdating}
                     />
                   </View>
                 ) : null}

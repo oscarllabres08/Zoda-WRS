@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
 
 import { supabase } from '../../../lib/supabase';
 import { Screen } from '../../../ui/components/Screen';
@@ -20,7 +19,6 @@ type VerifyResult =
   | { state: 'error'; message: string };
 
 export default function VoucherVerifyScreen() {
-  const router = useRouter();
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<VerifyResult>({ state: 'idle' });
@@ -74,18 +72,8 @@ export default function VoucherVerifyScreen() {
   }
 
   return (
-    <Screen>
+    <Screen safeAreaEdges={['left', 'right']}>
       <ScrollView contentContainerStyle={{ paddingBottom: theme.spacing.xl }}>
-        <Pressable onPress={() => router.back()} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-          <Ionicons name="arrow-back" size={22} color={PRIMARY} />
-          <Text weight="extrabold" style={{ color: PRIMARY }}>
-            Profile
-          </Text>
-        </Pressable>
-
-        <Text variant="title" weight="extrabold">
-          Voucher verification
-        </Text>
         <Text variant="muted" weight="semibold" style={{ marginTop: 8 }}>
           Customer shows their code from the app after redeeming loyalty points. Codes are unique, valid 3 days after issue, and can only be used once.
         </Text>
@@ -98,7 +86,7 @@ export default function VoucherVerifyScreen() {
               setCode(t);
               setResult({ state: 'idle' });
             }}
-            placeholder="e.g. REF-ABC123DEF456"
+            placeholder="e.g. REF-A1B2C3"
             autoCapitalize="characters"
           />
           <View style={{ marginTop: 14 }}>

@@ -5,7 +5,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 
 
 import { useAuth } from '../auth/AuthProvider';
-import { AdminNotificationToast, AdminNotificationsButton } from '../components/AdminNotificationsButton';
+import { AdminNotificationsButton } from '../components/AdminNotificationsButton';
 import { useBusinessMode, type BusinessMode } from '../business/BusinessModeProvider';
 import { supabase } from '../lib/supabase';
 
@@ -405,13 +405,13 @@ export function AdminLayout() {
 
           aria-controls="admin-sidebar"
 
+          aria-label={navOpen ? 'Close menu' : 'Open menu'}
+
           onClick={() => setNavOpen((v) => !v)}
 
         >
 
           <MenuIcon open={navOpen} />
-
-          <span className="sr-only">{navOpen ? 'Close menu' : 'Open menu'}</span>
 
         </button>
 
@@ -430,8 +430,11 @@ export function AdminLayout() {
         </div>
 
         <div className="admin-mobile-bar-actions">
-          <AdminNotificationsButton variant="mobile" />
+
           {pendingOrders > 0 ? <span className="admin-mobile-bar-badge">{pendingOrders}</span> : null}
+
+          <AdminNotificationsButton placement="header" />
+
         </div>
 
       </header>
@@ -536,11 +539,6 @@ export function AdminLayout() {
 
         <div className="admin-sidebar-foot">
 
-          <div className="admin-sidebar-notifications">
-            <AdminNotificationsButton variant="sidebar" />
-            <span className="admin-sidebar-notifications-label">Alerts</span>
-          </div>
-
           <div className="admin-user-row">
 
             <span className="admin-user-avatar" aria-hidden>
@@ -575,8 +573,6 @@ export function AdminLayout() {
 
       <main className="admin-main">
 
-        <AdminNotificationToast />
-
         <div className={`admin-main-inner${wideMain ? ' admin-main-inner--wide' : ''}`}>
 
           <Outlet context={{ pendingOrders, refreshPending: loadPending }} />
@@ -584,6 +580,8 @@ export function AdminLayout() {
         </div>
 
       </main>
+
+      <AdminNotificationsButton placement="desktop" />
 
     </div>
 

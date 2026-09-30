@@ -119,7 +119,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
               orderId: (n.order_id as string | undefined) ?? (rowData.orderId as string | undefined),
             });
             if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-            toastTimerRef.current = setTimeout(() => setToast(null), 5000);
+            toastTimerRef.current = setTimeout(() => setToast(null), 3000);
 
             if (prefsRef.current.soundEnabled) {
               playNotificationSound();

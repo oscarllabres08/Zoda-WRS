@@ -25,9 +25,16 @@ function timeLabel(iso: string) {
   }
 }
 
+function kindLabel(kind: string) {
+  if (kind === 'new_order') return 'Order';
+  if (kind === 'order_activity') return 'Update';
+  if (kind === 'seller_registration_pending') return 'Staff';
+  return 'Alert';
+}
+
 function BellIcon() {
   return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" aria-hidden>
       <path
         d="M12 3a5 5 0 0 0-5 5v2.1c0 .5-.2 1-.5 1.4L5.1 14.2A1 1 0 0 0 6 16h12a1 1 0 0 0 .9-1.8l-1.4-2.7c-.3-.4-.5-.9-.5-1.4V8a5 5 0 0 0-5-5z"
         stroke="currentColor"
@@ -39,10 +46,18 @@ function BellIcon() {
   );
 }
 
-export function AdminNotificationsButton({ variant = 'sidebar' }: { variant?: 'sidebar' | 'mobile' }) {
+function CloseIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+export function AdminNotificationsButton({ placement = 'desktop' }: { placement?: 'desktop' | 'header' }) {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { unreadCount, refresh } = useNotifications();
+  const { unreadCount, refresh, toast, dismissToast } = useNotifications();
   const [open, setOpen] = useState(false);
   const [rows, setRows] = useState<NotifRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -115,77 +130,88 @@ export function AdminNotificationsButton({ variant = 'sidebar' }: { variant?: 's
   return (
     <div
       ref={rootRef}
-      className={`admin-notifications${variant === 'mobile' ? ' admin-notifications--mobile' : ''}`}
+      className={`admin-notifications-fixed admin-notifications-fixed--${placement}`}
     >
-      <button
-        type="button"
-        className="admin-notifications-btn"
-        aria-label={badge ? `${badge} unread notifications` : 'Notifications'}
-        aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
-      >
-        <BellIcon />
-        {badge > 0 ? <span className="admin-notifications-badge">{badge > 99 ? '99+' : badge}</span> : null}
-      </button>
-
       {open ? (
-        <div className="admin-notifications-panel" role="dialog" aria-label="Notifications">
-          <div className="admin-notifications-panel-head">
-            <strong>Notifications</strong>
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => void clearAll()}>
-              Clear all
-            </button>
+        <button
+          type="button"
+          className="admin-notifications-backdrop"
+          aria-label="Close notifications"
+          onClick={() => setOpen(false)}
+        />
+      ) : null}
+
+      {toast ? (
+        <div className="admin-notification-popup" role="status" aria-live="polite">
+          <span className="admin-notification-popup-icon" aria-hidden>
+            <BellIcon />
+          </span>
+          <div className="admin-notification-popup-content">
+            <strong>{toast.title}</strong>
+            <span>{toast.body}</span>
           </div>
-          <p className="admin-notifications-panel-hint">
-            New orders, delivery updates, and staff registrations from Seller &amp; Customer apps.
-          </p>
-          {err ? <p className="error-text admin-notifications-error">{err}</p> : null}
-          <div className="admin-notifications-list">
-            {loading ? <p className="hint">Loading…</p> : null}
-            {!loading && rows.length === 0 ? (
-              <p className="hint" style={{ margin: 0 }}>
-                No notifications yet.
-              </p>
-            ) : null}
-            {rows.map((n) => (
-              <button
-                key={n.id}
-                type="button"
-                className={`admin-notifications-item${n.read_at ? '' : ' unread'}`}
-                onClick={() => void onItemClick(n)}
-              >
-                <span className="admin-notifications-item-title">{n.title}</span>
-                <span className="admin-notifications-item-body">{n.body}</span>
-                <span className="admin-notifications-item-time">{timeLabel(n.created_at)}</span>
-              </button>
-            ))}
-          </div>
+          <button
+            type="button"
+            className="admin-notification-popup-close"
+            aria-label="Dismiss notification"
+            onClick={dismissToast}
+          >
+            <CloseIcon />
+          </button>
         </div>
       ) : null}
+
+      <div className="admin-notifications">
+        <button
+          type="button"
+          className="admin-notifications-btn"
+          aria-label={badge ? `${badge} unread notifications` : 'Notifications'}
+          aria-expanded={open}
+          onClick={() => setOpen((v) => !v)}
+        >
+          <BellIcon />
+          {badge > 0 ? <span className="admin-notifications-badge">{badge > 99 ? '99+' : badge}</span> : null}
+        </button>
+
+        {open ? (
+          <div className="admin-notifications-panel" role="dialog" aria-label="Notifications">
+            <div className="admin-notifications-panel-header">
+              <div>
+                <strong>Notifications</strong>
+                <p className="admin-notifications-panel-hint">
+                  Orders, deliveries &amp; staff requests
+                </p>
+              </div>
+              <button type="button" className="admin-notifications-clear" onClick={() => void clearAll()}>
+                Clear all
+              </button>
+            </div>
+            {err ? <p className="error-text admin-notifications-error">{err}</p> : null}
+            <div className="admin-notifications-list">
+              {loading ? <p className="admin-notifications-empty">Loading…</p> : null}
+              {!loading && rows.length === 0 ? (
+                <p className="admin-notifications-empty">No notifications yet.</p>
+              ) : null}
+              {rows.map((n) => (
+                <button
+                  key={n.id}
+                  type="button"
+                  className={`admin-notifications-item${n.read_at ? '' : ' unread'} kind-${n.kind.replace(/[^a-z0-9_-]/gi, '')}`}
+                  onClick={() => void onItemClick(n)}
+                >
+                  <span className="admin-notifications-item-meta">
+                    <span className="admin-notifications-item-tag">{kindLabel(n.kind)}</span>
+                    {!n.read_at ? <span className="admin-notifications-item-new">New</span> : null}
+                  </span>
+                  <span className="admin-notifications-item-title">{n.title}</span>
+                  <span className="admin-notifications-item-body">{n.body}</span>
+                  <span className="admin-notifications-item-time">{timeLabel(n.created_at)}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
+      </div>
     </div>
-  );
-}
-
-export function AdminNotificationToast() {
-  const { toast, dismissToast } = useNotifications();
-  const navigate = useNavigate();
-
-  if (!toast) return null;
-
-  return (
-    <button
-      type="button"
-      className="admin-notification-toast"
-      onClick={() => {
-        dismissToast();
-        navigateFromAdminNotification(navigate, {
-          kind: toast.kind,
-          order_id: toast.orderId,
-        });
-      }}
-    >
-      <strong>{toast.title}</strong>
-      <span>{toast.body}</span>
-    </button>
   );
 }

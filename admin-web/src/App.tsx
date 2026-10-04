@@ -4,6 +4,7 @@ import { useAuth } from './auth/AuthProvider';
 import { AdminLayout } from './layout/AdminLayout';
 import { AuthPage } from './pages/AuthPage';
 import { CustomersPage } from './pages/CustomersPage';
+import { ExpensesPage } from './pages/ExpensesPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { InventoryPage } from './pages/InventoryPage';
 import { LoyaltyPage } from './pages/LoyaltyPage';
@@ -19,7 +20,7 @@ function ProtectedAdmin() {
 
   if (loading || profileLoading) {
     return (
-      <div className="auth-page">
+      <div className="auth-loading">
         <p style={{ fontWeight: 700 }}>Loading admin session…</p>
       </div>
     );
@@ -45,6 +46,7 @@ export default function App() {
         <Route path="sales" element={<SalesPage />} />
         <Route path="analytics" element={<Navigate to="/sales" replace />} />
         <Route path="customers" element={<CustomersPage />} />
+        <Route path="expenses" element={<ExpensesPage />} />
         <Route path="laundry">
           <Route index element={<Navigate to="/laundry/pos" replace />} />
           <Route path="pos" element={<LaundryPosPage />} />

@@ -240,6 +240,7 @@ export function LaundryServicesPage() {
                 type="number"
                 min={0}
                 step="0.01"
+                placeholder="e.g. 45.00"
                 value={form.price}
                 onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))}
               />

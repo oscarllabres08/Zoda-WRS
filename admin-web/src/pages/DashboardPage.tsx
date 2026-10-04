@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 
 import { PageHeader } from '../components/PageHeader';
 import { useAuth } from '../auth/AuthProvider';
+import { todayDateInputValue } from '../lib/expenseTypes';
 import { money } from '../lib/format';
 import { orderCountsTowardOnlineSales } from '../lib/orderSalesEligible';
 import { LOW_STOCK_THRESHOLD } from '../lib/inventoryStock';
@@ -36,6 +37,7 @@ export function DashboardPage() {
   const [staffPending, setStaffPending] = useState(0);
   const [productCount, setProductCount] = useState(0);
   const [lowStockCount, setLowStockCount] = useState(0);
+  const [expensesToday, setExpensesToday] = useState(0);
 
   const fetchRecentOrders = useCallback(
     async (offset: number) => {
@@ -56,7 +58,9 @@ export function DashboardPage() {
     if (!businessId) return;
     const from = startOfToday().toISOString();
 
-    const [ordersRes, posRes, pendingRes, recentRows, staffRes, prodRes, lowStockRes] = await Promise.all([
+    const today = todayDateInputValue();
+
+    const [ordersRes, posRes, pendingRes, recentRows, staffRes, prodRes, lowStockRes, expensesRes] = await Promise.all([
       supabase
         .from('orders')
         .select('id,status,payment_settled,payment_method,order_items(unit_price,quantity)')
@@ -79,6 +83,7 @@ export function DashboardPage() {
         .eq('category', 'other')
         .not('stock_quantity', 'is', null)
         .lte('stock_quantity', LOW_STOCK_THRESHOLD),
+      supabase.from('business_expenses').select('amount').eq('seller_id', businessId).eq('expense_date', today),
     ]);
 
     let online = 0;
@@ -103,8 +108,16 @@ export function DashboardPage() {
       }
     }
 
+    let expenses = 0;
+    if (!expensesRes.error) {
+      for (const row of expensesRes.data ?? []) {
+        expenses += Number((row as { amount: number }).amount);
+      }
+    }
+
     setOnlineToday(online);
     setWalkInToday(walk);
+    setExpensesToday(expenses);
     setPendingCount(pendingRes.count ?? 0);
     setRecent(recentRows);
     setRecentHasMore(recentRows.length === RECENT_ORDERS_PAGE);
@@ -133,6 +146,11 @@ export function DashboardPage() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'orders', filter: `seller_id=eq.${businessId}` }, () => void load())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'pos_sales', filter: `seller_id=eq.${businessId}` }, () => void load())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'products', filter: `seller_id=eq.${businessId}` }, () => void load())
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'business_expenses', filter: `seller_id=eq.${businessId}` },
+        () => void load()
+      )
       .subscribe();
     return () => {
       supabase.removeChannel(ch);
@@ -140,6 +158,8 @@ export function DashboardPage() {
   }, [businessId, load]);
 
   const storeLabel = profile?.display_name?.trim() || 'Your store';
+  const grossToday = onlineToday + walkInToday;
+  const netIncomeToday = grossToday - expensesToday;
 
   return (
     <>
@@ -164,6 +184,29 @@ export function DashboardPage() {
         <div className="stat-card">
           <div className="label">Products in inventory</div>
           <div className="value">{productCount}</div>
+        </div>
+      </div>
+
+      <div className="card dashboard-profit-card">
+        <h2 className="dashboard-profit-title">Today&apos;s net income</h2>
+        <div className="grid-stats dashboard-profit-grid">
+          <div className="stat-card">
+            <div className="label">Gross sales</div>
+            <div className="value">{money(grossToday)}</div>
+            <p className="stat-card-sub">Online {money(onlineToday)} · POS {money(walkInToday)}</p>
+          </div>
+          <div className="stat-card stat-card--expense">
+            <div className="label">Expenses today</div>
+            <div className="value">{money(expensesToday)}</div>
+            <p className="stat-card-sub">
+              <Link to="/expenses">Manage expenses →</Link>
+            </p>
+          </div>
+          <div className={`stat-card stat-card--net${netIncomeToday < 0 ? ' negative' : ''}`}>
+            <div className="label">Net income</div>
+            <div className="value">{money(netIncomeToday)}</div>
+            <p className="stat-card-sub">Gross sales minus expenses (today)</p>
+          </div>
         </div>
       </div>
 

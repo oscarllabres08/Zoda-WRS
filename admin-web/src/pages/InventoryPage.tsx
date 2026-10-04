@@ -432,11 +432,26 @@ export function InventoryPage() {
             <form onSubmit={(e) => void saveEdit(e)}>
               <div className="field">
                 <label htmlFor="ename">Name</label>
-                <input id="ename" value={editName} onChange={(e) => setEditName(e.target.value)} required />
+                <input
+                  id="ename"
+                  placeholder="e.g. 5-Gallon Water Refill"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  required
+                />
               </div>
               <div className="field">
                 <label htmlFor="eprice">Price (₱)</label>
-                <input id="eprice" type="number" min={0} step="0.01" value={editPrice} onChange={(e) => setEditPrice(e.target.value)} required />
+                <input
+                  id="eprice"
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  placeholder="e.g. 25.00"
+                  value={editPrice}
+                  onChange={(e) => setEditPrice(e.target.value)}
+                  required
+                />
               </div>
               <div className="field">
                 <label htmlFor="ecat">Category</label>
@@ -461,6 +476,7 @@ export function InventoryPage() {
                     type="number"
                     min={0}
                     step={1}
+                    placeholder="e.g. 50"
                     value={editStockQty}
                     onChange={(e) => setEditStockQty(e.target.value)}
                     required

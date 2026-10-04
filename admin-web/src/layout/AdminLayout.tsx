@@ -27,6 +27,8 @@ type NavIconId =
 
   | 'customers'
 
+  | 'expenses'
+
   | 'signout';
 
 
@@ -177,6 +179,20 @@ function NavIcon({ id }: { id: NavIconId }) {
 
       );
 
+    case 'expenses':
+
+      return (
+
+        <svg {...common}>
+
+          <path d="M6 4h12v16H6V4z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+
+          <path d="M9 8h6M9 12h6M9 16h4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+
+        </svg>
+
+      );
+
     case 'signout':
 
       return (
@@ -236,6 +252,8 @@ const NAV_WRS = [
   { to: '/loyalty', label: 'Loyalty points', icon: 'loyalty' as const },
 
   { to: '/sales', label: 'Sales & Analytics', icon: 'sales' as const },
+
+  { to: '/expenses', label: 'Expenses', icon: 'expenses' as const },
 
   { to: '/staff', label: 'Staff management', icon: 'staff' as const },
 
@@ -461,7 +479,7 @@ export function AdminLayout() {
 
         <div className="admin-sidebar-glow" aria-hidden />
 
-
+        <div className="admin-sidebar-inner">
 
         <div className="admin-brand">
 
@@ -495,75 +513,79 @@ export function AdminLayout() {
           )}
         </div>
 
-        <p className="admin-nav-section-label">Main menu</p>
+        <div className="admin-sidebar-body">
 
-        <nav className="admin-nav" aria-label="Main">
+          <p className="admin-nav-section-label">Main menu</p>
 
-          {NAV.map((item) => (
+          <nav className="admin-nav" aria-label="Main">
 
-            <NavLink
+            {NAV.map((item) => (
 
-              key={item.to}
+              <NavLink
 
-              to={item.to}
+                key={item.to}
 
-              end={'end' in item ? item.end : false}
+                to={item.to}
 
-              className={({ isActive }) => (isActive ? 'admin-nav-link active' : 'admin-nav-link')}
+                end={'end' in item ? item.end : false}
 
-              onClick={() => setNavOpen(false)}
+                className={({ isActive }) => (isActive ? 'admin-nav-link active' : 'admin-nav-link')}
 
-            >
+                onClick={() => setNavOpen(false)}
 
-              <span className="admin-nav-link-inner">
+              >
 
-                <span className="admin-nav-icon-wrap">
+                <span className="admin-nav-link-inner">
 
-                  <NavIcon id={item.icon} />
+                  <span className="admin-nav-icon-wrap">
+
+                    <NavIcon id={item.icon} />
+
+                  </span>
+
+                  <span className="admin-nav-label">{item.label}</span>
 
                 </span>
 
-                <span className="admin-nav-label">{item.label}</span>
+                {item.to === '/' && pendingOrders > 0 ? <span className="admin-badge">{pendingOrders}</span> : null}
+
+              </NavLink>
+
+            ))}
+
+          </nav>
+
+          <div className="admin-sidebar-foot">
+
+            <div className="admin-user-row">
+
+              <span className="admin-user-avatar" aria-hidden>
+
+                {userInitial}
 
               </span>
 
-              {item.to === '/' && pendingOrders > 0 ? <span className="admin-badge">{pendingOrders}</span> : null}
+              <div className="admin-user-meta">
 
-            </NavLink>
+                <span className="admin-user-role">Store owner</span>
 
-          ))}
+                <span className="admin-user">{displayName}</span>
 
-        </nav>
-
-
-
-        <div className="admin-sidebar-foot">
-
-          <div className="admin-user-row">
-
-            <span className="admin-user-avatar" aria-hidden>
-
-              {userInitial}
-
-            </span>
-
-            <div className="admin-user-meta">
-
-              <span className="admin-user-role">Store owner</span>
-
-              <span className="admin-user">{displayName}</span>
+              </div>
 
             </div>
 
+            <button type="button" className="btn btn-sidebar-signout btn-sm" onClick={() => void handleSignOut()}>
+
+              <NavIcon id="signout" />
+
+              Sign out
+
+            </button>
+
           </div>
 
-          <button type="button" className="btn btn-sidebar-signout btn-sm" onClick={() => void handleSignOut()}>
-
-            <NavIcon id="signout" />
-
-            Sign out
-
-          </button>
+        </div>
 
         </div>
 

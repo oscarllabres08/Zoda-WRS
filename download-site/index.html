@@ -505,12 +505,14 @@
       </div>
     </div>
 
+    <script src="js/config.js"></script>
     <script>
       (function () {
-        /** Edit APK filenames and staff PIN here. */
+        const external = window.ZODA_DOWNLOAD_CFG || {};
+        /** Edit local APK filenames and staff PIN here. */
         const cfg = {
-          customerApk: 'customer-app.apk',
-          sellerApk: 'seller-app.apk',
+          customerApk: external.customerApkUrl || 'customer-app.apk',
+          sellerApk: external.sellerApkUrl || 'seller-app.apk',
           sellerPin: '101819',
           sessionKey: 'zoda_seller_unlocked',
         };

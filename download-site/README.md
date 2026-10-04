@@ -2,29 +2,50 @@
 
 Static page for Customer and Seller APK downloads (Vercel).
 
-## Push to GitHub (download-site only)
+## Why APK works locally but not on Vercel
 
-From the **repo root**, run:
+- **Local:** `customer-app.apk` and `seller-app.apk` sit in this folder on your PC.
+- **Vercel:** deploys from **GitHub only**. If APKs are not committed, the live site shows *"APK not uploaded yet"*.
 
-```powershell
-.\scripts\push-download-site.ps1
+## After each EAS build — publish APKs to Vercel
+
+1. Copy the new APKs into this folder:
+
+   ```text
+   download-site/customer-app.apk
+   download-site/seller-app.apk
+   ```
+
+2. Push **download-site only**:
+
+   ```powershell
+   cd "c:\Users\Oscar Jomer\Documents\WRS Aquabeast\Aquabeast"
+   git add download-site/customer-app.apk download-site/seller-app.apk download-site/
+   .\scripts\push-download-site.ps1 "Update APK builds"
+   ```
+
+3. Wait for Vercel to redeploy (1–2 minutes), then refresh the download page.
+
+Each APK is ~90 MB. GitHub allows files under 100 MB.
+
+## Alternative: Supabase Storage (optional)
+
+To avoid large files in git, upload APKs to Supabase Dashboard → Storage → `wrs-assets` → folder `apks/`, then set public URLs in `js/config.js`:
+
+```javascript
+window.ZODA_DOWNLOAD_CFG = {
+  customerApkUrl: 'https://nigvimeeqglqvgvtnbfy.supabase.co/storage/v1/object/public/wrs-assets/apks/customer-app.apk',
+  sellerApkUrl: 'https://nigvimeeqglqvgvtnbfy.supabase.co/storage/v1/object/public/wrs-assets/apks/seller-app.apk',
+};
 ```
 
-With a custom message:
+Commit and push `js/config.js` only (no APK in git).
 
-```powershell
-.\scripts\push-download-site.ps1 "Update download page"
-```
+## Push commands
 
-This commits and pushes **only** `download-site/` — other folders (`admin-web`, apps, etc.) are not included in that commit.
+| Goal | Command |
+|------|---------|
+| Download site only | `.\scripts\push-download-site.ps1 "message"` |
+| Rest of project (no download-site) | `.\scripts\push-monorepo.ps1 "message"` |
 
-## Push the rest of the project (without download-site)
-
-```powershell
-.\scripts\push-monorepo.ps1 "Update admin-web and apps"
-```
-
-## Notes
-
-- APK files (`*.apk`) are gitignored. Host APKs on Vercel or link to EAS build URLs in `index.html`.
-- Do **not** use `git add .` at repo root if you only mean to update this folder — use the script above instead.
+Do **not** use `git add .` at repo root when you only mean to update this folder.

@@ -1,4 +1,3 @@
-# Ignore stray APK builds; these two are the release files for Vercel.
 *.apk
 !customer-app.apk
 !seller-app.apk

@@ -434,7 +434,7 @@
             Download Customer App
           </a>
           <p id="customer-missing" class="card-hint card-hint--warn" hidden>
-            APK not uploaded yet. Place <code>customer-app.apk</code> in the same folder as this page.
+            APK not on server yet. Push <code>customer-app.apk</code> to GitHub.
           </p>
         </article>
 
@@ -467,7 +467,7 @@
             Unlocked for this session. You may download now.
           </p>
           <p id="seller-missing" class="card-hint card-hint--warn" hidden>
-            APK not uploaded yet. Place <code>seller-app.apk</code> in the same folder as this page.
+            APK not on server yet. Push <code>seller-app.apk</code> to GitHub.
           </p>
         </article>
       </section>
@@ -532,8 +532,14 @@
         const pinInput = document.getElementById('pin-input');
         const pinError = document.getElementById('pin-error');
 
-        if (customerLink) customerLink.href = cfg.customerApk;
-        if (sellerLink) sellerLink.href = cfg.sellerApk;
+        if (customerLink) {
+          customerLink.href = cfg.customerApk;
+          if (cfg.customerApk.startsWith('http')) customerLink.setAttribute('download', 'customer-app.apk');
+        }
+        if (sellerLink) {
+          sellerLink.href = cfg.sellerApk;
+          if (cfg.sellerApk.startsWith('http')) sellerLink.setAttribute('download', 'seller-app.apk');
+        }
 
         function isUnlocked() {
           try {
@@ -591,7 +597,12 @@
           document.body.classList.remove('modal-open');
         }
 
+        function isRemoteApkUrl(url) {
+          return url.startsWith('https://') || url.startsWith('http://');
+        }
+
         async function apkExists(url) {
+          if (isRemoteApkUrl(url)) return true;
           try {
             const res = await fetch(url, { method: 'HEAD' });
             return res.ok;
@@ -601,9 +612,8 @@
         }
 
         async function checkApkAvailability() {
-          const results = await Promise.all([apkExists(cfg.customerApk), apkExists(cfg.sellerApk)]);
-          const customerOk = results[0];
-          const sellerOk = results[1];
+          const customerOk = cfg.customerApk ? await apkExists(cfg.customerApk) : false;
+          const sellerOk = cfg.sellerApk ? await apkExists(cfg.sellerApk) : false;
 
           if (customerLink && !customerOk) {
             customerLink.classList.add('btn-download--disabled');

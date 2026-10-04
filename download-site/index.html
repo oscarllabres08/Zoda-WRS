@@ -1,0 +1,665 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#063a7a" />
+    <meta name="description" content="Download Zoda WRS mobile apps — Customer and Seller." />
+    <link rel="icon" type="image/png" href="logo.png" />
+    <title>Zoda WRS — Download Apps</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&display=swap" rel="stylesheet" />
+    <style>
+      :root {
+        --wrs-navy: #063a7a;
+        --wrs-blue: #1265d6;
+        --wrs-cyan: #3ab1ff;
+        --text: #0a1b37;
+        --muted: #5a6f8f;
+        --surface: #ffffff;
+        --border: rgba(18, 101, 214, 0.14);
+        --shadow: 0 12px 40px rgba(6, 58, 122, 0.12);
+        --radius: 20px;
+        --safe-top: env(safe-area-inset-top, 0px);
+        --safe-bottom: env(safe-area-inset-bottom, 0px);
+      }
+
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+
+      html {
+        -webkit-text-size-adjust: 100%;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100dvh;
+        font-family: 'Nunito', system-ui, -apple-system, Segoe UI, sans-serif;
+        color: var(--text);
+        background: #e8f4fc;
+        line-height: 1.45;
+      }
+
+      body.modal-open {
+        overflow: hidden;
+      }
+
+      .page-bg {
+        position: fixed;
+        inset: 0;
+        background:
+          radial-gradient(circle at 10% 0%, rgba(58, 177, 255, 0.35), transparent 42%),
+          radial-gradient(circle at 90% 10%, rgba(18, 101, 214, 0.18), transparent 38%),
+          linear-gradient(180deg, #d9eeff 0%, #eef6fc 45%, #f8fbff 100%);
+        z-index: -1;
+      }
+
+      .shell {
+        width: min(480px, 100%);
+        margin: 0 auto;
+        padding: calc(20px + var(--safe-top)) 16px calc(24px + var(--safe-bottom));
+      }
+
+      .hero {
+        text-align: center;
+        margin-bottom: 22px;
+      }
+
+      .hero-logo-wrap {
+        width: 96px;
+        height: 96px;
+        margin: 0 auto 14px;
+        border-radius: 24px;
+        background: var(--surface);
+        box-shadow: var(--shadow);
+        display: grid;
+        place-items: center;
+        padding: 8px;
+        border: 2px solid rgba(58, 177, 255, 0.25);
+      }
+
+      .hero-logo {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        border-radius: 16px;
+      }
+
+      .hero-eyebrow {
+        margin: 0 0 6px;
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--wrs-blue);
+      }
+
+      .hero h1 {
+        margin: 0;
+        font-size: clamp(1.65rem, 6vw, 2rem);
+        font-weight: 900;
+        color: var(--wrs-navy);
+        letter-spacing: -0.02em;
+      }
+
+      .hero-lead {
+        margin: 10px auto 0;
+        max-width: 34ch;
+        color: var(--muted);
+        font-weight: 700;
+        font-size: 15px;
+      }
+
+      .cards {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+
+      .card {
+        background: var(--surface);
+        border: 1.5px solid var(--border);
+        border-radius: var(--radius);
+        padding: 18px 16px 16px;
+        box-shadow: var(--shadow);
+      }
+
+      .card-customer {
+        border-top: 4px solid var(--wrs-cyan);
+      }
+
+      .card-seller {
+        border-top: 4px solid var(--wrs-navy);
+      }
+
+      .card-icon {
+        width: 44px;
+        height: 44px;
+        border-radius: 14px;
+        display: grid;
+        place-items: center;
+        font-size: 22px;
+        background: rgba(58, 177, 255, 0.14);
+        margin-bottom: 12px;
+      }
+
+      .card-icon--lock {
+        background: rgba(6, 58, 122, 0.1);
+      }
+
+      .card-body h2 {
+        margin: 0 0 6px;
+        font-size: 1.25rem;
+        font-weight: 900;
+        color: var(--wrs-navy);
+      }
+
+      .card-body p {
+        margin: 0;
+        color: var(--muted);
+        font-weight: 700;
+        font-size: 14px;
+      }
+
+      .card-meta {
+        margin: 12px 0 0;
+        padding: 0;
+        list-style: none;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .card-meta li {
+        font-size: 11px;
+        font-weight: 800;
+        padding: 4px 10px;
+        border-radius: 999px;
+        background: rgba(18, 101, 214, 0.08);
+        color: var(--wrs-blue);
+      }
+
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        width: 100%;
+        margin-top: 14px;
+        padding: 14px 16px;
+        border-radius: 14px;
+        border: none;
+        font: inherit;
+        font-size: 15px;
+        font-weight: 900;
+        text-decoration: none;
+        cursor: pointer;
+        transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+      }
+
+      .btn:active:not(:disabled):not(.btn-download--locked):not(.btn-download--disabled) {
+        transform: scale(0.98);
+      }
+
+      .btn-primary {
+        background: linear-gradient(135deg, var(--wrs-blue), var(--wrs-cyan));
+        color: #fff;
+        box-shadow: 0 10px 24px rgba(18, 101, 214, 0.28);
+      }
+
+      .btn-outline {
+        background: var(--surface);
+        color: var(--wrs-navy);
+        border: 1.5px solid rgba(6, 58, 122, 0.22);
+      }
+
+      .btn-block {
+        width: 100%;
+      }
+
+      .btn-download--locked,
+      .btn-download--disabled {
+        opacity: 0.45;
+        pointer-events: none;
+        filter: grayscale(0.2);
+        box-shadow: none;
+      }
+
+      .btn-icon {
+        font-size: 16px;
+        line-height: 1;
+      }
+
+      .card-hint {
+        margin: 10px 0 0;
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .card-hint code {
+        font-size: 11px;
+        background: rgba(6, 58, 122, 0.06);
+        padding: 2px 6px;
+        border-radius: 6px;
+      }
+
+      .card-hint--warn {
+        color: #c2410c;
+      }
+
+      .card-hint--ok {
+        color: #15803d;
+      }
+
+      .site-footer {
+        margin-top: 24px;
+        text-align: center;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .site-footer p {
+        margin: 0 0 6px;
+      }
+
+      .site-footer-note {
+        font-size: 11px;
+        opacity: 0.85;
+      }
+
+      .modal[hidden] {
+        display: none !important;
+      }
+
+      .modal {
+        position: fixed;
+        inset: 0;
+        z-index: 100;
+        display: grid;
+        place-items: center;
+        padding: 16px;
+      }
+
+      .modal-backdrop {
+        position: absolute;
+        inset: 0;
+        background: rgba(3, 38, 79, 0.55);
+        backdrop-filter: blur(4px);
+      }
+
+      .modal-panel {
+        position: relative;
+        width: min(380px, 100%);
+        background: var(--surface);
+        border-radius: 20px;
+        padding: 22px 18px 18px;
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.22);
+        border: 1.5px solid var(--border);
+        animation: modal-in 0.22s ease;
+      }
+
+      @keyframes modal-in {
+        from {
+          opacity: 0;
+          transform: translateY(12px) scale(0.98);
+        }
+        to {
+          opacity: 1;
+          transform: none;
+        }
+      }
+
+      .modal-close {
+        position: absolute;
+        top: 10px;
+        right: 12px;
+        width: 36px;
+        height: 36px;
+        border: none;
+        border-radius: 10px;
+        background: rgba(6, 58, 122, 0.06);
+        color: var(--wrs-navy);
+        font-size: 22px;
+        line-height: 1;
+        cursor: pointer;
+      }
+
+      .modal-icon {
+        font-size: 28px;
+        margin-bottom: 8px;
+      }
+
+      .modal-panel h2 {
+        margin: 0 0 6px;
+        font-size: 1.2rem;
+        font-weight: 900;
+        color: var(--wrs-navy);
+      }
+
+      .modal-lead {
+        margin: 0 0 16px;
+        color: var(--muted);
+        font-weight: 700;
+        font-size: 14px;
+      }
+
+      .field {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        margin-bottom: 12px;
+      }
+
+      .field span {
+        font-size: 12px;
+        font-weight: 800;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+
+      .field input {
+        width: 100%;
+        padding: 14px;
+        border-radius: 12px;
+        border: 1.5px solid var(--border);
+        font: inherit;
+        font-size: 20px;
+        font-weight: 900;
+        letter-spacing: 0.2em;
+        text-align: center;
+        color: var(--wrs-navy);
+        background: #f8fbff;
+      }
+
+      .field input:focus {
+        outline: none;
+        border-color: rgba(18, 101, 214, 0.45);
+        box-shadow: 0 0 0 3px rgba(58, 177, 255, 0.2);
+      }
+
+      .field-error {
+        margin: -4px 0 10px;
+        font-size: 13px;
+        font-weight: 800;
+        color: #dc2626;
+      }
+
+      @media (min-width: 640px) {
+        .shell {
+          padding-top: calc(36px + var(--safe-top));
+        }
+
+        .cards {
+          gap: 18px;
+        }
+
+        .card {
+          padding: 22px 20px 18px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page-bg" aria-hidden="true"></div>
+
+    <main class="shell">
+      <header class="hero">
+        <div class="hero-logo-wrap">
+          <img src="logo.png" alt="Zoda WRS" class="hero-logo" width="88" height="88" />
+        </div>
+        <p class="hero-eyebrow">Zoda Water Refilling Station</p>
+        <h1>Download our apps</h1>
+        <p class="hero-lead">Order water from your phone or manage the store on the go.</p>
+      </header>
+
+      <section class="cards" aria-label="App downloads">
+        <article class="card card-customer">
+          <div class="card-icon" aria-hidden="true">💧</div>
+          <div class="card-body">
+            <h2>Customer App</h2>
+            <p>Place orders, track delivery, and manage your account.</p>
+            <ul class="card-meta">
+              <li>Android APK</li>
+              <li>Public download</li>
+            </ul>
+          </div>
+          <a id="customer-download" class="btn btn-primary btn-download" href="customer-app.apk" download>
+            <span class="btn-icon" aria-hidden="true">⬇</span>
+            Download Customer App
+          </a>
+          <p id="customer-missing" class="card-hint card-hint--warn" hidden>
+            APK not uploaded yet. Place <code>customer-app.apk</code> in the same folder as this page.
+          </p>
+        </article>
+
+        <article class="card card-seller">
+          <div class="card-icon card-icon--lock" aria-hidden="true">🔒</div>
+          <div class="card-body">
+            <h2>Seller App</h2>
+            <p>For store staff and owners only. PIN required to download.</p>
+            <ul class="card-meta">
+              <li>Android APK</li>
+              <li>Staff access</li>
+            </ul>
+          </div>
+
+          <button type="button" id="unlock-seller-btn" class="btn btn-outline">Unlock Seller App</button>
+
+          <a
+            id="seller-download"
+            class="btn btn-primary btn-download btn-download--locked"
+            href="application-b2cd7545-9b2e-4af0-abf1-a1506d202117.apk"
+            download
+            aria-disabled="true"
+            tabindex="-1"
+          >
+            <span class="btn-icon" aria-hidden="true">⬇</span>
+            Download Seller App
+          </a>
+
+          <p id="seller-unlocked-hint" class="card-hint card-hint--ok" hidden>
+            Unlocked for this session. You may download now.
+          </p>
+          <p id="seller-missing" class="card-hint card-hint--warn" hidden>
+            APK not uploaded yet. Place <code>seller-app.apk</code> in the same folder as this page.
+          </p>
+        </article>
+      </section>
+
+      <footer class="site-footer">
+        <p>© <span id="year"></span> Zoda WRS · Pure water for a healthier tomorrow</p>
+        <p class="site-footer-note">After installing, allow installs from unknown sources if Android asks.</p>
+      </footer>
+    </main>
+
+    <div id="pin-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="pin-modal-title" hidden>
+      <div class="modal-backdrop" data-close-modal></div>
+      <div class="modal-panel">
+        <button type="button" class="modal-close" data-close-modal aria-label="Close">×</button>
+        <div class="modal-icon" aria-hidden="true">🔐</div>
+        <h2 id="pin-modal-title">Enter staff PIN</h2>
+        <p class="modal-lead">Seller app is for authorized staff only.</p>
+        <form id="pin-form">
+          <label class="field">
+            <span>PIN</span>
+            <input
+              id="pin-input"
+              type="password"
+              inputmode="numeric"
+              pattern="[0-9]*"
+              maxlength="8"
+              autocomplete="off"
+              placeholder="••••••"
+              required
+            />
+          </label>
+          <p id="pin-error" class="field-error" role="alert" hidden>Incorrect PIN. Try again.</p>
+          <button type="submit" class="btn btn-primary btn-block">Verify PIN</button>
+        </form>
+      </div>
+    </div>
+
+    <script>
+      (function () {
+        /** Edit APK filenames and staff PIN here. */
+        const cfg = {
+          customerApk: 'customer-app.apk',
+          sellerApk: 'seller-app.apk',
+          sellerPin: '101819',
+          sessionKey: 'zoda_seller_unlocked',
+        };
+
+        const yearEl = document.getElementById('year');
+        if (yearEl) yearEl.textContent = String(new Date().getFullYear());
+
+        const customerLink = document.getElementById('customer-download');
+        const sellerLink = document.getElementById('seller-download');
+        const unlockBtn = document.getElementById('unlock-seller-btn');
+        const customerMissing = document.getElementById('customer-missing');
+        const sellerMissing = document.getElementById('seller-missing');
+        const sellerUnlockedHint = document.getElementById('seller-unlocked-hint');
+
+        const modal = document.getElementById('pin-modal');
+        const pinForm = document.getElementById('pin-form');
+        const pinInput = document.getElementById('pin-input');
+        const pinError = document.getElementById('pin-error');
+
+        if (customerLink) customerLink.href = cfg.customerApk;
+        if (sellerLink) sellerLink.href = cfg.sellerApk;
+
+        function isUnlocked() {
+          try {
+            return sessionStorage.getItem(cfg.sessionKey) === '1';
+          } catch {
+            return false;
+          }
+        }
+
+        function setUnlocked(unlocked) {
+          try {
+            if (unlocked) sessionStorage.setItem(cfg.sessionKey, '1');
+            else sessionStorage.removeItem(cfg.sessionKey);
+          } catch {
+            /* ignore */
+          }
+          applySellerLockState();
+        }
+
+        function applySellerLockState() {
+          const unlocked = isUnlocked();
+          if (!sellerLink || !unlockBtn) return;
+
+          if (unlocked) {
+            sellerLink.classList.remove('btn-download--locked');
+            sellerLink.removeAttribute('aria-disabled');
+            sellerLink.tabIndex = 0;
+            unlockBtn.hidden = true;
+            if (sellerUnlockedHint) sellerUnlockedHint.hidden = false;
+          } else {
+            sellerLink.classList.add('btn-download--locked');
+            sellerLink.setAttribute('aria-disabled', 'true');
+            sellerLink.tabIndex = -1;
+            unlockBtn.hidden = false;
+            if (sellerUnlockedHint) sellerUnlockedHint.hidden = true;
+          }
+        }
+
+        function openModal() {
+          if (!modal) return;
+          modal.hidden = false;
+          document.body.classList.add('modal-open');
+          if (pinError) pinError.hidden = true;
+          if (pinInput) {
+            pinInput.value = '';
+            window.setTimeout(function () {
+              pinInput.focus();
+            }, 50);
+          }
+        }
+
+        function closeModal() {
+          if (!modal) return;
+          modal.hidden = true;
+          document.body.classList.remove('modal-open');
+        }
+
+        async function apkExists(url) {
+          try {
+            const res = await fetch(url, { method: 'HEAD' });
+            return res.ok;
+          } catch {
+            return false;
+          }
+        }
+
+        async function checkApkAvailability() {
+          const results = await Promise.all([apkExists(cfg.customerApk), apkExists(cfg.sellerApk)]);
+          const customerOk = results[0];
+          const sellerOk = results[1];
+
+          if (customerLink && !customerOk) {
+            customerLink.classList.add('btn-download--disabled');
+            customerLink.setAttribute('aria-disabled', 'true');
+            customerLink.addEventListener('click', function (e) {
+              e.preventDefault();
+            });
+            if (customerMissing) customerMissing.hidden = false;
+          }
+
+          if (sellerLink && !sellerOk) {
+            sellerLink.classList.add('btn-download--disabled');
+            if (sellerMissing) sellerMissing.hidden = false;
+            if (unlockBtn) unlockBtn.disabled = true;
+          }
+        }
+
+        if (unlockBtn) unlockBtn.addEventListener('click', openModal);
+
+        if (modal) {
+          modal.querySelectorAll('[data-close-modal]').forEach(function (el) {
+            el.addEventListener('click', closeModal);
+          });
+        }
+
+        document.addEventListener('keydown', function (e) {
+          if (e.key === 'Escape' && modal && !modal.hidden) closeModal();
+        });
+
+        if (pinForm) {
+          pinForm.addEventListener('submit', function (e) {
+            e.preventDefault();
+            const entered = (pinInput && pinInput.value ? pinInput.value : '').trim();
+            if (entered === cfg.sellerPin) {
+              setUnlocked(true);
+              closeModal();
+              return;
+            }
+            if (pinError) pinError.hidden = false;
+            if (pinInput) {
+              pinInput.select();
+              pinInput.focus();
+            }
+          });
+        }
+
+        if (sellerLink) {
+          sellerLink.addEventListener('click', function (e) {
+            if (!isUnlocked()) {
+              e.preventDefault();
+              openModal();
+            }
+          });
+        }
+
+        applySellerLockState();
+        void checkApkAvailability();
+      })();
+    </script>
+  </body>
+</html>

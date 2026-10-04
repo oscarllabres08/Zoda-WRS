@@ -618,7 +618,11 @@ function DeliveredOrderRow({
               color: paid ? theme.colors.success : theme.colors.muted,
             }}
           >
-            {paid ? 'Paid' : 'Unpaid'}
+            {paid
+              ? 'Paid'
+              : (order.payment_method ?? '').toLowerCase() === 'gcash'
+                ? 'GCash payment'
+                : 'Unpaid'}
           </Text>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>

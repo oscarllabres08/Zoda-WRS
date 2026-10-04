@@ -8,6 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { orderDistanceKm, formatOrderDistance } from '../../lib/orderDistance';
 import { publicWrsAssetUrl } from '../../lib/publicAssetUrl';
 import { markOrderViewed } from '../../lib/viewedOrders';
+import { isRpcNotFound } from '../../lib/rpcErrors';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../providers/AuthProvider';
 import { Screen } from '../../ui/components/Screen';
@@ -124,6 +125,19 @@ function statusOptionTint(key: string): { bg: string; border: string; icon: stri
 
 function money(n: number) {
   return `₱${n.toFixed(2)}`;
+}
+
+function paymentReferenceFieldLabel(method: string | null | undefined) {
+  return (method ?? '').toLowerCase() === 'gcash' ? 'Amount' : 'Reference Number';
+}
+
+function paymentReferenceDisplay(method: string | null | undefined, reference: string | null) {
+  if (!reference?.trim()) return '';
+  if ((method ?? '').toLowerCase() === 'gcash') {
+    const num = Number.parseFloat(reference.replace(/,/g, ''));
+    if (!Number.isNaN(num)) return money(num);
+  }
+  return reference.trim();
 }
 
 function paymentMethodLabel(m: string | null | undefined) {
@@ -428,11 +442,7 @@ export default function OrderDetailsScreen() {
     try {
       const { error: paidErr } = await supabase.rpc('seller_mark_order_paid', { p_order_id: order.id });
       if (paidErr) {
-        const rpcMissing =
-          paidErr.code === 'PGRST202' ||
-          paidErr.message.includes('seller_mark_order_paid') ||
-          paidErr.message.includes('schema cache');
-        if (!rpcMissing) throw paidErr;
+        if (!isRpcNotFound(paidErr)) throw paidErr;
         if (pm === 'utang') {
           const { error: utangErr } = await supabase.rpc('seller_mark_order_utang_paid', { p_order_id: order.id });
           if (utangErr) throw utangErr;
@@ -787,13 +797,20 @@ export default function OrderDetailsScreen() {
                           {order.payment_reference ? (
                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 }}>
                               <Text variant="muted" style={{ flex: 1 }} numberOfLines={1}>
-                                Reference Number:{' '}
+                                {paymentReferenceFieldLabel(order.payment_method)}:{' '}
                                 <Text weight="extrabold" style={{ color: theme.colors.text }}>
-                                  {order.payment_reference}
+                                  {paymentReferenceDisplay(order.payment_method, order.payment_reference)}
                                 </Text>
                               </Text>
                               <Pressable
-                                onPress={() => Alert.alert('Reference number', order.payment_reference ?? undefined)}
+                                onPress={() =>
+                                  Alert.alert(
+                                    paymentReferenceFieldLabel(order.payment_method),
+                                    paymentReferenceDisplay(order.payment_method, order.payment_reference) ||
+                                      order.payment_reference ||
+                                      undefined
+                                  )
+                                }
                                 hitSlop={10}
                                 style={{
                                   width: 30,
@@ -864,7 +881,9 @@ export default function OrderDetailsScreen() {
                             Awaiting confirmation
                           </Text>
                           <Text variant="muted" style={{ marginTop: 4, fontSize: 12 }}>
-                            Verify the reference and proof, then mark as paid.
+                            {(order.payment_method ?? '').toLowerCase() === 'gcash'
+                              ? 'Verify the amount and proof, then mark as paid.'
+                              : 'Verify the reference and proof, then mark as paid.'}
                           </Text>
                         </View>
                       )}

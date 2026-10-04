@@ -552,7 +552,7 @@ export default function OrdersScreen() {
   );
 }
 
-function PaymentStatusBadge({ paid, utang }: { paid: boolean; utang: boolean }) {
+function PaymentStatusBadge({ paid, utang, gcash }: { paid: boolean; utang: boolean; gcash?: boolean }) {
   if (paid) {
     return (
       <View
@@ -571,6 +571,28 @@ function PaymentStatusBadge({ paid, utang }: { paid: boolean; utang: boolean }) 
         <Ionicons name="checkmark-circle" size={15} color={theme.colors.success} />
         <Text weight="extrabold" style={{ fontSize: 12, color: theme.colors.success }}>
           Paid
+        </Text>
+      </View>
+    );
+  }
+  if (gcash) {
+    return (
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 5,
+          paddingVertical: 5,
+          paddingHorizontal: 10,
+          borderRadius: 999,
+          backgroundColor: 'rgba(18,101,214,0.10)',
+          borderWidth: 1,
+          borderColor: 'rgba(18,101,214,0.22)',
+        }}
+      >
+        <Ionicons name="wallet-outline" size={15} color={theme.colors.primary} />
+        <Text weight="extrabold" style={{ fontSize: 12, color: theme.colors.primary }}>
+          GCash payment
         </Text>
       </View>
     );
@@ -641,6 +663,7 @@ function OrderCard({
   const avatarUri = customerAvatarUrl ?? null;
   const customerInitial = (order.customer_name.trim()[0] ?? '?').toUpperCase();
   const isUtang = (order.payment_method ?? '').toLowerCase() === 'utang';
+  const isGcash = (order.payment_method ?? '').toLowerCase() === 'gcash';
   const isPaid = order.payment_settled === true;
   const fullAddress = `${order.delivery_address}${order.landmark ? `, ${order.landmark}` : ''}`.trim();
   const { units, total } = orderItemSummary(order.order_items);
@@ -725,7 +748,7 @@ function OrderCard({
             minWidth: compact ? undefined : 120,
           }}
         >
-          <PaymentStatusBadge paid={isPaid} utang={isUtang && !isPaid} />
+          <PaymentStatusBadge paid={isPaid} utang={isUtang && !isPaid} gcash={isGcash && !isPaid} />
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
             <Ionicons name="cube-outline" size={14} color={theme.colors.muted} />
             <Text weight="semibold" style={{ fontSize: 13, color: theme.colors.text }}>

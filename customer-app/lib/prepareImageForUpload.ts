@@ -1,6 +1,6 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import * as ImageManipulator from 'expo-image-manipulator';
-import { Image } from 'react-native';
+import { Image, Platform } from 'react-native';
 
 const MAX_EDGE = 1024;
 const MIN_EDGE = 640;
@@ -24,6 +24,15 @@ function getImageSize(uri: string): Promise<{ width: number; height: number }> {
 }
 
 async function fileSizeBytes(uri: string): Promise<number> {
+  if (Platform.OS === 'web') {
+    try {
+      const res = await fetch(uri);
+      const blob = await res.blob();
+      return blob.size;
+    } catch {
+      return 0;
+    }
+  }
   const info = await FileSystem.getInfoAsync(uri);
   if (!info.exists) return 0;
   return typeof info.size === 'number' ? info.size : 0;
@@ -34,6 +43,22 @@ async function fileSizeBytes(uri: string): Promise<number> {
  * Retries with lower quality / smaller size until under TARGET_MAX_BYTES.
  */
 export async function prepareImageForUpload(localUri: string): Promise<PreparedImage> {
+  if (Platform.OS === 'web') {
+    const bytes = await fileSizeBytes(localUri);
+    if (bytes <= TARGET_MAX_BYTES || bytes === 0) {
+      return { uri: localUri, contentType: 'image/jpeg' };
+    }
+    try {
+      const result = await ImageManipulator.manipulateAsync(localUri, [{ resize: { width: MAX_EDGE } }], {
+        compress: JPEG_QUALITY_START,
+        format: ImageManipulator.SaveFormat.JPEG,
+      });
+      return { uri: result.uri, contentType: 'image/jpeg' };
+    } catch {
+      return { uri: localUri, contentType: 'image/jpeg' };
+    }
+  }
+
   let edge = MAX_EDGE;
   let quality = JPEG_QUALITY_START;
   let sourceUri = localUri;

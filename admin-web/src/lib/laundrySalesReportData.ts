@@ -52,6 +52,7 @@ function aggregateLaundry(pos: LaundryPosRow[], timelineMode: 'day' | 'month'): 
       type: 'walk-in',
       amount: amt,
       status: 'paid',
+      paymentMethod: 'Cash',
       productLabel: names.join(', ') || 'Laundry sale',
       customerName: s.customer_name?.trim() || 'Walk-in customer',
     });

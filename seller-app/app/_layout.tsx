@@ -6,7 +6,7 @@ import { useEffect } from 'react';
 import 'react-native-reanimated';
 import { Platform, Pressable, View } from 'react-native';
 
-import { useColorScheme } from '@/components/useColorScheme';
+import { useColorScheme } from '../components/useColorScheme';
 import { AuthProvider, useAuth } from '../providers/AuthProvider';
 import { NotificationsProvider, useNotifications } from '../providers/NotificationsProvider';
 import { Ionicons } from '@expo/vector-icons';

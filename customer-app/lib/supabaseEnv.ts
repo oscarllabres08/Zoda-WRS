@@ -8,13 +8,16 @@ type Extra = {
 export function getSupabaseUrlAndKey(): { url: string; anonKey: string } {
   const extra = (Constants.expoConfig?.extra ?? {}) as Extra;
 
-  const url = process.env.EXPO_PUBLIC_SUPABASE_URL ?? extra.supabaseUrl;
-  const anonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? extra.supabaseAnonKey;
+  // In release APK, `extra` from app.config.js (EAS env) is the reliable source.
+  const url = (extra.supabaseUrl ?? process.env.EXPO_PUBLIC_SUPABASE_URL)?.trim();
+  const anonKey = (extra.supabaseAnonKey ?? process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY)?.trim();
 
   if (!url || !anonKey) {
-    throw new Error(
-      'Missing Supabase config. Copy customer-app/.env.example to customer-app/.env, then restart: npx expo start -c'
-    );
+    const msg =
+      'Missing Supabase config. Use EAS profile preview/production (customer-app/eas.json) or customer-app/.env locally.';
+    if (__DEV__) throw new Error(msg);
+    console.error(msg);
+    return { url: url || 'https://invalid.local', anonKey: anonKey || 'missing-anon-key' };
   }
 
   return { url, anonKey };

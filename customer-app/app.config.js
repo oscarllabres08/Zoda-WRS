@@ -5,13 +5,17 @@ loadEnv(process.cwd());
 
 const base = require('./app.json');
 
+// Baked at build time for EAS (see eas.json env) and local .env for dev.
+const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL?.trim() || '';
+const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY?.trim() || '';
+
 module.exports = () => ({
   expo: {
     ...base.expo,
     extra: {
       ...base.expo.extra,
-      supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL,
-      supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY,
+      supabaseUrl,
+      supabaseAnonKey,
     },
   },
 });

@@ -4,6 +4,7 @@ import { useAuth } from '../auth/AuthProvider';
 import { ModulePageHeader } from '../components/ModulePageHeader';
 import { money, publicWrsAssetUrl } from '../lib/format';
 import { isLowStock, stockLabel, tracksStock } from '../lib/inventoryStock';
+import { type PosPaymentMethod } from '../lib/posPayment';
 import { supabase } from '../lib/supabase';
 
 type ProductRow = {
@@ -37,6 +38,11 @@ const POS_CATEGORIES: { id: PosCategory; label: string; icon?: string }[] = [
   { id: 'others', label: 'Others', icon: '📦' },
 ];
 
+const POS_PAYMENT_METHODS: { id: PosPaymentMethod; label: string }[] = [
+  { id: 'cash', label: 'Cash' },
+  { id: 'gcash', label: 'GCash' },
+];
+
 export function PosPage() {
   const { businessId, profile } = useAuth();
   const [products, setProducts] = useState<ProductRow[]>([]);
@@ -47,6 +53,8 @@ export function PosPage() {
   const [success, setSuccess] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState<PosCategory>('all');
+  const [customerName, setCustomerName] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState<PosPaymentMethod>('cash');
   const [cashReceived, setCashReceived] = useState('');
 
   const branch =
@@ -102,7 +110,8 @@ export function PosPage() {
   const cartCount = useMemo(() => cart.reduce((s, l) => s + l.quantity, 0), [cart]);
   const cartTotal = useMemo(() => cart.reduce((s, l) => s + l.unitPrice * l.quantity, 0), [cart]);
   const cashNum = Number(cashReceived);
-  const change = Number.isFinite(cashNum) && cashNum >= cartTotal ? cashNum - cartTotal : 0;
+  const change =
+    paymentMethod === 'cash' && Number.isFinite(cashNum) && cashNum >= cartTotal ? cashNum - cartTotal : 0;
 
   function addProduct(p: ProductRow) {
     const left = remainingStock(p.id);
@@ -154,16 +163,45 @@ export function PosPage() {
   function clearCart() {
     setCart([]);
     setCashReceived('');
+    setCustomerName('');
+    setPaymentMethod('cash');
     setSuccess(null);
   }
 
-  async function submitSale() {
+  async function submitSale(paymentSettled: boolean) {
     if (!businessId || cart.length === 0) return;
+
+    if (paymentSettled && paymentMethod === 'cash') {
+      if (!Number.isFinite(cashNum) || cashNum < cartTotal) {
+        setError('Enter cash received (at least the order total) for a paid cash sale.');
+        return;
+      }
+    }
+
     setSubmitting(true);
     setError(null);
     setSuccess(null);
     try {
-      const { data: saleRow, error: saleErr } = await supabase.from('pos_sales').insert({ seller_id: businessId }).select('id').single();
+      const trimmedName = customerName.trim();
+      const cashValue =
+        paymentMethod === 'cash' && Number.isFinite(cashNum) ? cashNum : paymentSettled ? cartTotal : null;
+      const changeDue =
+        paymentMethod === 'cash' && paymentSettled && cashValue != null
+          ? Math.max(0, cashValue - cartTotal)
+          : null;
+
+      const { data: saleRow, error: saleErr } = await supabase
+        .from('pos_sales')
+        .insert({
+          seller_id: businessId,
+          customer_name: trimmedName || null,
+          payment_method: paymentMethod,
+          payment_settled: paymentSettled,
+          cash_received: cashValue,
+          change_due: changeDue,
+        })
+        .select('id')
+        .single();
       if (saleErr) throw saleErr;
       const saleId = saleRow.id as string;
       const rows = cart.map((l) => ({
@@ -190,7 +228,13 @@ export function PosPage() {
       }
       await loadProducts();
       clearCart();
-      setSuccess('Order completed. Sale recorded for reports.');
+      const who = trimmedName ? `${trimmedName} · ` : '';
+      const payLabel = paymentMethod === 'gcash' ? 'GCash' : 'Cash';
+      setSuccess(
+        paymentSettled
+          ? `${who}Paid ${payLabel} sale recorded.${changeDue != null && changeDue > 0 ? ` Change: ${money(changeDue)}.` : ''}`
+          : `${who}Unpaid ${payLabel} sale recorded.${trimmedName ? ' Customer added to list.' : ''}`
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to save sale');
     } finally {
@@ -280,6 +324,18 @@ export function PosPage() {
             </button>
           </div>
 
+          <label className="field pos-customer-field">
+            <span className="pos-cash-label">Customer name (optional)</span>
+            <input
+              type="text"
+              placeholder="e.g. Juan Dela Cruz"
+              value={customerName}
+              onChange={(e) => setCustomerName(e.target.value)}
+              autoComplete="name"
+            />
+            <p className="field-hint">Saved sales with a name appear in Customer list.</p>
+          </label>
+
           <div className="pos-cart-lines">
             {cart.length === 0 ? (
               <p className="muted-block">Tap + on a product to add it here.</p>
@@ -291,9 +347,7 @@ export function PosPage() {
                     <div className="pos-cart-line-thumb">{img ? <img src={img} alt="" /> : null}</div>
                     <div className="pos-cart-line-body">
                       <div className="pos-cart-line-title">{l.name}</div>
-                      <div className="pos-cart-line-unit">
-                        {money(l.unitPrice)} / pc
-                      </div>
+                      <div className="pos-cart-line-unit">{money(l.unitPrice)} / pc</div>
                       <div className="pos-cart-line-foot">
                         <div className="qty-stepper">
                           <button type="button" aria-label="Decrease quantity" onClick={() => setLineQty(l.productId, l.quantity - 1)}>
@@ -316,42 +370,80 @@ export function PosPage() {
             )}
           </div>
 
-          <div className="pos-totals">
-            <div className="pos-total-row">
-              <span>Subtotal</span>
-              <span>{money(cartTotal)}</span>
+          <div className="pos-checkout-section">
+            <h3 className="pos-checkout-heading">Product summary</h3>
+            <div className="pos-totals">
+              <div className="pos-total-row">
+                <span>Subtotal</span>
+                <span>{money(cartTotal)}</span>
+              </div>
+              <div className="pos-total-row pos-total-row--grand">
+                <span>Total</span>
+                <span>{money(cartTotal)}</span>
+              </div>
             </div>
-            <div className="pos-total-row pos-total-row--grand">
-              <span>Total</span>
-              <span>{money(cartTotal)}</span>
-            </div>
-          </div>
 
-          <label className="field pos-cash-field">
-            <span className="pos-cash-label">
-              <CashIcon /> Cash Received
-            </span>
-            <input
-              type="number"
-              min={0}
-              step="0.01"
-              placeholder="0.00"
-              value={cashReceived}
-              onChange={(e) => setCashReceived(e.target.value)}
-            />
-          </label>
-          <div className="pos-change-box">
-            <span>Change</span>
-            <strong>{money(change)}</strong>
+            <div className="pos-payment-block">
+              <span className="pos-cash-label">Payment method</span>
+              <div className="pos-payment-tabs" role="tablist">
+                {POS_PAYMENT_METHODS.map((m) => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={paymentMethod === m.id}
+                    className={`pos-category-tab${paymentMethod === m.id ? ' active' : ''}`}
+                    onClick={() => {
+                      setPaymentMethod(m.id);
+                      if (m.id === 'gcash') setCashReceived('');
+                    }}
+                  >
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {paymentMethod === 'cash' ? (
+              <>
+                <label className="field pos-cash-field">
+                  <span className="pos-cash-label">
+                    <CashIcon /> Cash received
+                  </span>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    placeholder="0.00"
+                    value={cashReceived}
+                    onChange={(e) => setCashReceived(e.target.value)}
+                  />
+                </label>
+                <div className="pos-change-box">
+                  <span>Change</span>
+                  <strong>{money(change)}</strong>
+                </div>
+              </>
+            ) : (
+              <p className="muted-block pos-gcash-hint">GCash payment — mark paid when reference is confirmed.</p>
+            )}
           </div>
 
           <button
             type="button"
             className="btn btn-primary btn-block pos-complete-btn"
             disabled={cart.length === 0 || submitting}
-            onClick={() => void submitSale()}
+            onClick={() => void submitSale(true)}
           >
-            <CheckIcon /> {submitting ? 'Saving…' : 'Complete Order'}
+            <CheckIcon /> {submitting ? 'Saving…' : 'Complete paid order'}
+          </button>
+          <button
+            type="button"
+            className="btn btn-block pos-unpaid-btn"
+            disabled={cart.length === 0 || submitting}
+            onClick={() => void submitSale(false)}
+          >
+            Complete as unpaid order
           </button>
           <button type="button" className="btn btn-ghost btn-block" disabled={cart.length === 0} onClick={clearCart}>
             <TrashIcon /> Clear Cart

@@ -5,6 +5,13 @@ import { PageHeader } from '../components/PageHeader';
 import { useAuth } from '../auth/AuthProvider';
 import { money } from '../lib/format';
 import { orderGrandTotal } from '../lib/orderTotal';
+import {
+  formatPosPaymentMethod,
+  isPosCustomerRowId,
+  normalizeCustomerName,
+  posCustomerRowId,
+  posNameFromRowId,
+} from '../lib/posPayment';
 import { supabase } from '../lib/supabase';
 
 type CustomerRow = {
@@ -20,15 +27,26 @@ type CustomerRow = {
   totalSpent: number;
   containersOutstanding: number;
   containerIdentifierNotes: string | null;
+  isPosOnly: boolean;
+  posNameKey: string | null;
 };
 
-type OrderHistoryRow = {
+type HistoryItem = {
+  name: string;
+  qty: number;
+  unit_price: number;
+};
+
+type HistoryEntry = {
   id: string;
+  source: 'order' | 'pos';
   created_at: string;
   status: string;
-  payment_settled: boolean | null;
+  payment_settled: boolean;
   payment_method: string | null;
   total: number;
+  items: HistoryItem[];
+  channelLabel: string;
 };
 
 type PayFilter = 'all' | 'paid' | 'unpaid';
@@ -38,6 +56,9 @@ const ORDER_HISTORY_PAGE = 10;
 
 const ORDER_HISTORY_SELECT =
   'id,created_at,status,payment_settled,payment_method,delivery_fee,order_items(product_name,unit_price,quantity)';
+
+const POS_HISTORY_SELECT =
+  'id,created_at,payment_settled,payment_method,customer_name,pos_sale_items(product_name,unit_price,quantity)';
 
 type OrderHistorySource = {
   id: string;
@@ -49,15 +70,58 @@ type OrderHistorySource = {
   order_items: { product_name?: string | null; unit_price: number; quantity: number }[];
 };
 
-function mapOrderHistoryRow(o: OrderHistorySource): OrderHistoryRow {
+type PosHistorySource = {
+  id: string;
+  created_at: string;
+  payment_settled: boolean | null;
+  payment_method: string | null;
+  customer_name: string | null;
+  pos_sale_items: { product_name?: string | null; unit_price: number; quantity: number }[];
+};
+
+function mapOrderHistoryRow(o: OrderHistorySource): HistoryEntry {
+  const items = (o.order_items ?? []).map((it) => ({
+    name: it.product_name?.trim() || 'Item',
+    qty: it.quantity,
+    unit_price: Number(it.unit_price),
+  }));
   return {
     id: o.id,
+    source: 'order',
     created_at: o.created_at,
     status: o.status,
-    payment_settled: o.payment_settled,
+    payment_settled: o.payment_settled === true,
     payment_method: o.payment_method,
     total: orderGrandTotal(o.order_items, o.delivery_fee),
+    items,
+    channelLabel: 'Online order',
   };
+}
+
+function mapPosHistoryRow(o: PosHistorySource): HistoryEntry {
+  const items = (o.pos_sale_items ?? []).map((it) => ({
+    name: it.product_name?.trim() || 'Item',
+    qty: it.quantity,
+    unit_price: Number(it.unit_price),
+  }));
+  const total = items.reduce((s, it) => s + it.unit_price * it.qty, 0);
+  return {
+    id: o.id,
+    source: 'pos',
+    created_at: o.created_at,
+    status: 'walk-in',
+    payment_settled: o.payment_settled === true,
+    payment_method: o.payment_method,
+    total,
+    items,
+    channelLabel: 'Walk-in POS',
+  };
+}
+
+function posSaleTotal(
+  items: { unit_price: number; quantity: number }[] | null | undefined
+): number {
+  return (items ?? []).reduce((s, it) => s + Number(it.unit_price) * Number(it.quantity), 0);
 }
 
 export function CustomersPage() {
@@ -69,11 +133,13 @@ export function CustomersPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [historyFor, setHistoryFor] = useState<CustomerRow | null>(null);
-  const [history, setHistory] = useState<OrderHistoryRow[]>([]);
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyHasMore, setHistoryHasMore] = useState(false);
   const [historyLoadingMore, setHistoryLoadingMore] = useState(false);
   const [returnBusyId, setReturnBusyId] = useState<string | null>(null);
+  const [selectedEntry, setSelectedEntry] = useState<HistoryEntry | null>(null);
+  const [paymentBusy, setPaymentBusy] = useState(false);
 
   const load = useCallback(async () => {
     if (!businessId) return;
@@ -103,6 +169,13 @@ export function CustomersPage() {
       .order('created_at', { ascending: false })
       .limit(2000);
 
+    const { data: posSales } = await supabase
+      .from('pos_sales')
+      .select('id,customer_name,created_at,payment_settled,payment_method,pos_sale_items(unit_price,quantity)')
+      .eq('seller_id', businessId)
+      .order('created_at', { ascending: false })
+      .limit(2000);
+
     const agg = new Map<
       string,
       {
@@ -116,15 +189,7 @@ export function CustomersPage() {
     >();
 
     for (const o of orders ?? []) {
-      const row = o as {
-        customer_id: string;
-        created_at: string;
-        status: string;
-        payment_settled: boolean | null;
-        payment_method: string | null;
-        delivery_fee: number | null;
-        order_items: { product_name?: string | null; unit_price: number; quantity: number }[];
-      };
+      const row = o as OrderHistorySource & { customer_id: string };
       const orderTotal = orderGrandTotal(row.order_items, row.delivery_fee);
       const utangUnpaid =
         (row.payment_method ?? '').toLowerCase() === 'utang' && row.payment_settled !== true;
@@ -142,11 +207,57 @@ export function CustomersPage() {
       } else {
         agg.set(row.customer_id, {
           count: cur.count + 1,
-          last: cur.last,
+          last: cur.last > row.created_at ? cur.last : row.created_at,
           hasUnpaidUtang: cur.hasUnpaidUtang || utangUnpaid,
           unpaidDeliveredCount: cur.unpaidDeliveredCount + (deliveredUnpaid ? 1 : 0),
           unpaidDeliveredTotal: cur.unpaidDeliveredTotal + (deliveredUnpaid ? orderTotal : 0),
           totalSpent: cur.totalSpent + orderTotal,
+        });
+      }
+    }
+
+    const posAgg = new Map<
+      string,
+      {
+        displayName: string;
+        count: number;
+        last: string;
+        unpaidCount: number;
+        unpaidTotal: number;
+        totalSpent: number;
+      }
+    >();
+
+    for (const s of posSales ?? []) {
+      const row = s as {
+        customer_name: string | null;
+        created_at: string;
+        payment_settled: boolean | null;
+        pos_sale_items: { unit_price: number; quantity: number }[];
+      };
+      const rawName = row.customer_name?.trim();
+      if (!rawName) continue;
+      const key = normalizeCustomerName(rawName);
+      const amt = posSaleTotal(row.pos_sale_items);
+      const unpaid = row.payment_settled !== true;
+      const cur = posAgg.get(key);
+      if (!cur) {
+        posAgg.set(key, {
+          displayName: rawName,
+          count: 1,
+          last: row.created_at,
+          unpaidCount: unpaid ? 1 : 0,
+          unpaidTotal: unpaid ? amt : 0,
+          totalSpent: amt,
+        });
+      } else {
+        posAgg.set(key, {
+          displayName: cur.displayName,
+          count: cur.count + 1,
+          last: cur.last > row.created_at ? cur.last : row.created_at,
+          unpaidCount: cur.unpaidCount + (unpaid ? 1 : 0),
+          unpaidTotal: cur.unpaidTotal + (unpaid ? amt : 0),
+          totalSpent: cur.totalSpent + amt,
         });
       }
     }
@@ -172,27 +283,57 @@ export function CustomersPage() {
       });
     }
 
+    const mergedPosKeys = new Set<string>();
     const list: CustomerRow[] = (customers ?? []).map((c) => {
       const p = c as { user_id: string; display_name: string | null; phone: string | null; address: string | null };
       const a = agg.get(p.user_id);
+      const displayName = p.display_name?.trim() || 'Customer';
+      const nameKey = normalizeCustomerName(displayName);
+      const pos = nameKey ? posAgg.get(nameKey) : undefined;
+      if (pos && nameKey) mergedPosKeys.add(nameKey);
+
       const bal = balByCustomer.get(p.user_id);
       const outstanding = bal?.outstanding_count ?? 0;
+      const unpaidPosCount = pos?.unpaidCount ?? 0;
+      const unpaidPosTotal = pos?.unpaidTotal ?? 0;
+
       return {
         id: p.user_id,
-        name: p.display_name?.trim() || 'Customer',
+        name: displayName,
         phone: p.phone?.trim() || '—',
         address: p.address?.trim() || '—',
-        orderCount: a?.count ?? 0,
-        lastOrder: a?.last ?? null,
+        orderCount: (a?.count ?? 0) + (pos?.count ?? 0),
+        lastOrder: [a?.last, pos?.last].filter(Boolean).sort().reverse()[0] ?? null,
         hasUnpaidUtang: a?.hasUnpaidUtang ?? false,
-        unpaidDeliveredCount: a?.unpaidDeliveredCount ?? 0,
-        unpaidDeliveredTotal: a?.unpaidDeliveredTotal ?? 0,
-        totalSpent: a?.totalSpent ?? 0,
+        unpaidDeliveredCount: (a?.unpaidDeliveredCount ?? 0) + unpaidPosCount,
+        unpaidDeliveredTotal: (a?.unpaidDeliveredTotal ?? 0) + unpaidPosTotal,
+        totalSpent: (a?.totalSpent ?? 0) + (pos?.totalSpent ?? 0),
         containersOutstanding: outstanding,
-        containerIdentifierNotes:
-          outstanding > 0 ? (bal?.identifier_notes?.trim() || null) : null,
+        containerIdentifierNotes: outstanding > 0 ? bal?.identifier_notes?.trim() || null : null,
+        isPosOnly: false,
+        posNameKey: nameKey || null,
       };
     });
+
+    for (const [key, pos] of posAgg) {
+      if (mergedPosKeys.has(key)) continue;
+      list.push({
+        id: posCustomerRowId(key),
+        name: pos.displayName,
+        phone: 'Walk-in POS',
+        address: '—',
+        orderCount: pos.count,
+        lastOrder: pos.last,
+        hasUnpaidUtang: false,
+        unpaidDeliveredCount: pos.unpaidCount,
+        unpaidDeliveredTotal: pos.unpaidTotal,
+        totalSpent: pos.totalSpent,
+        containersOutstanding: 0,
+        containerIdentifierNotes: null,
+        isPosOnly: true,
+        posNameKey: key,
+      });
+    }
 
     list.sort((a, b) => b.orderCount - a.orderCount);
     setRows(list);
@@ -205,6 +346,7 @@ export function CustomersPage() {
     const ch = supabase
       .channel(`admin-customers-${businessId}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'orders', filter: `seller_id=eq.${businessId}` }, () => void load())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'pos_sales', filter: `seller_id=eq.${businessId}` }, () => void load())
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'seller_customer_container_balance', filter: `seller_id=eq.${businessId}` },
@@ -216,18 +358,46 @@ export function CustomersPage() {
     };
   }, [businessId, load]);
 
-  const fetchCustomerOrders = useCallback(
-    async (customerId: string, offset: number) => {
-      if (!businessId) return [] as OrderHistoryRow[];
-      const { data, error: err } = await supabase
-        .from('orders')
-        .select(ORDER_HISTORY_SELECT)
-        .eq('seller_id', businessId)
-        .eq('customer_id', customerId)
-        .order('created_at', { ascending: false })
-        .range(offset, offset + ORDER_HISTORY_PAGE - 1);
-      if (err) throw err;
-      return (data ?? []).map((o) => mapOrderHistoryRow(o as OrderHistorySource));
+  const [historyAll, setHistoryAll] = useState<HistoryEntry[]>([]);
+  const [historyVisibleCount, setHistoryVisibleCount] = useState(ORDER_HISTORY_PAGE);
+
+  const fetchAllHistory = useCallback(
+    async (customer: CustomerRow): Promise<HistoryEntry[]> => {
+      if (!businessId) return [];
+
+      const entries: HistoryEntry[] = [];
+      const nameKey = customer.posNameKey ?? posNameFromRowId(customer.id);
+
+      if (!customer.isPosOnly) {
+        const { data, error: err } = await supabase
+          .from('orders')
+          .select(ORDER_HISTORY_SELECT)
+          .eq('seller_id', businessId)
+          .eq('customer_id', customer.id)
+          .order('created_at', { ascending: false })
+          .limit(200);
+        if (err) throw err;
+        entries.push(...(data ?? []).map((o) => mapOrderHistoryRow(o as OrderHistorySource)));
+      }
+
+      if (nameKey) {
+        const { data: posData, error: posErr } = await supabase
+          .from('pos_sales')
+          .select(POS_HISTORY_SELECT)
+          .eq('seller_id', businessId)
+          .not('customer_name', 'is', null)
+          .order('created_at', { ascending: false })
+          .limit(500);
+        if (posErr) throw posErr;
+        const filtered = (posData ?? []).filter((row) => {
+          const name = (row as PosHistorySource).customer_name?.trim();
+          return name ? normalizeCustomerName(name) === nameKey : false;
+        });
+        entries.push(...filtered.map((o) => mapPosHistoryRow(o as PosHistorySource)));
+      }
+
+      entries.sort((a, b) => b.created_at.localeCompare(a.created_at));
+      return entries;
     },
     [businessId]
   );
@@ -236,12 +406,16 @@ export function CustomersPage() {
     if (!businessId) return;
     setHistoryFor(c);
     setHistory([]);
+    setHistoryAll([]);
+    setHistoryVisibleCount(ORDER_HISTORY_PAGE);
+    setSelectedEntry(null);
     setHistoryHasMore(false);
     setHistoryLoading(true);
     try {
-      const list = await fetchCustomerOrders(c.id, 0);
-      setHistory(list);
-      setHistoryHasMore(list.length === ORDER_HISTORY_PAGE);
+      const list = await fetchAllHistory(c);
+      setHistoryAll(list);
+      setHistory(list.slice(0, ORDER_HISTORY_PAGE));
+      setHistoryHasMore(list.length > ORDER_HISTORY_PAGE);
     } catch (ex) {
       setError(ex instanceof Error ? ex.message : 'Could not load order history');
       setHistory([]);
@@ -254,11 +428,10 @@ export function CustomersPage() {
     if (!historyFor || historyLoadingMore || !historyHasMore) return;
     setHistoryLoadingMore(true);
     try {
-      const next = await fetchCustomerOrders(historyFor.id, history.length);
-      setHistory((prev) => [...prev, ...next]);
-      setHistoryHasMore(next.length === ORDER_HISTORY_PAGE);
-    } catch (ex) {
-      setError(ex instanceof Error ? ex.message : 'Could not load more orders');
+      const nextCount = historyVisibleCount + ORDER_HISTORY_PAGE;
+      setHistoryVisibleCount(nextCount);
+      setHistory(historyAll.slice(0, nextCount));
+      setHistoryHasMore(historyAll.length > nextCount);
     } finally {
       setHistoryLoadingMore(false);
     }
@@ -267,7 +440,50 @@ export function CustomersPage() {
   function closeHistory() {
     setHistoryFor(null);
     setHistory([]);
+    setSelectedEntry(null);
     setHistoryHasMore(false);
+  }
+
+  async function setEntryPaymentSettled(entry: HistoryEntry, settled: boolean) {
+    if (!businessId) return;
+    setPaymentBusy(true);
+    setError(null);
+    try {
+      if (entry.source === 'order') {
+        const { error: upErr } = await supabase
+          .from('orders')
+          .update({ payment_settled: settled })
+          .eq('id', entry.id)
+          .eq('seller_id', businessId);
+        if (upErr) throw upErr;
+      } else {
+        const { error: upErr } = await supabase
+          .from('pos_sales')
+          .update({ payment_settled: settled })
+          .eq('id', entry.id)
+          .eq('seller_id', businessId);
+        if (upErr) throw upErr;
+      }
+      const nextEntry = { ...entry, payment_settled: settled };
+      setSelectedEntry(nextEntry);
+      setHistory((prev) => prev.map((h) => (h.id === entry.id && h.source === entry.source ? nextEntry : h)));
+      setHistoryAll((prev) => prev.map((h) => (h.id === entry.id && h.source === entry.source ? nextEntry : h)));
+      await load();
+    } catch (ex) {
+      setError(ex instanceof Error ? ex.message : 'Could not update payment status');
+    } finally {
+      setPaymentBusy(false);
+    }
+  }
+
+  function paymentMethodLabel(entry: HistoryEntry): string {
+    if (entry.source === 'pos') return formatPosPaymentMethod(entry.payment_method);
+    const m = (entry.payment_method ?? '').toLowerCase();
+    if (m === 'gcash') return 'GCash';
+    if (m === 'cod') return 'Cash on delivery';
+    if (m === 'maya') return 'Maya';
+    if (m === 'utang') return 'Utang';
+    return entry.payment_method ?? '—';
   }
 
   const filtered = useMemo(() => {
@@ -292,7 +508,7 @@ export function CustomersPage() {
     <>
       <PageHeader
         title="Customers"
-        description="Customer list, borrowed containers, and order history — filter by payment or containers."
+        description="Customer list, walk-in POS names, borrowed containers, and order history."
       />
       {error ? <p className="error-text">{error}</p> : null}
 
@@ -346,7 +562,11 @@ export function CustomersPage() {
                 <tr key={r.id}>
                   <td>
                     <strong>{r.name}</strong>
-                    <div style={{ fontSize: 12, color: 'var(--muted)', maxWidth: 220 }}>{r.phone}</div>
+                    {r.isPosOnly ? (
+                      <div style={{ fontSize: 12, color: 'var(--muted)' }}>Walk-in POS</div>
+                    ) : (
+                      <div style={{ fontSize: 12, color: 'var(--muted)', maxWidth: 220 }}>{r.phone}</div>
+                    )}
                   </td>
                   <td>{r.orderCount}</td>
                   <td>{money(r.totalSpent)}</td>
@@ -364,16 +584,20 @@ export function CustomersPage() {
                     )}
                   </td>
                   <td>
-                    <ContainerReturnPanel
-                      customerId={r.id}
-                      customerName={r.name}
-                      outstanding={r.containersOutstanding}
-                      identifierNotes={r.containerIdentifierNotes}
-                      busy={returnBusyId === r.id}
-                      onBusyChange={(b) => setReturnBusyId(b ? r.id : null)}
-                      onSuccess={() => void load()}
-                      onError={(msg) => setError(msg || null)}
-                    />
+                    {!r.isPosOnly ? (
+                      <ContainerReturnPanel
+                        customerId={r.id}
+                        customerName={r.name}
+                        outstanding={r.containersOutstanding}
+                        identifierNotes={r.containerIdentifierNotes}
+                        busy={returnBusyId === r.id}
+                        onBusyChange={(b) => setReturnBusyId(b ? r.id : null)}
+                        onSuccess={() => void load()}
+                        onError={(msg) => setError(msg || null)}
+                      />
+                    ) : (
+                      '—'
+                    )}
                   </td>
                   <td>
                     <button type="button" className="btn btn-ghost btn-sm" onClick={() => void openHistory(r)}>
@@ -389,27 +613,27 @@ export function CustomersPage() {
 
       {historyFor ? (
         <div className="modal-backdrop" role="presentation" onClick={closeHistory}>
-          <div className="modal-card" role="dialog" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-card customer-history-modal" role="dialog" onClick={(e) => e.stopPropagation()}>
             <h2 className="card-title">{historyFor.name} — order history</h2>
             {historyLoading ? <p className="muted-block">Loading…</p> : null}
             {!historyLoading && history.length === 0 ? <p className="muted-block">No orders yet.</p> : null}
-            <ul className="history-list">
+            <ul className="history-list customer-history-list">
               {history.map((h) => (
-                <li key={h.id}>
-                  <div>
-                    <strong>{new Date(h.created_at).toLocaleString()}</strong>
-                    <span className="chip" style={{ marginLeft: 8 }}>
-                      {h.status}
-                    </span>
-                  </div>
-                  <div style={{ marginTop: 4 }}>
-                    {money(h.total)} ·{' '}
-                    {h.payment_settled ? (
-                      <span className="chip ok">Paid</span>
-                    ) : (
-                      <span className="chip pending">{h.payment_method ?? 'Unpaid'}</span>
-                    )}
-                  </div>
+                <li key={`${h.source}-${h.id}`}>
+                  <button type="button" className="customer-history-item" onClick={() => setSelectedEntry(h)}>
+                    <div className="customer-history-item-top">
+                      <strong>{new Date(h.created_at).toLocaleString()}</strong>
+                      <span className="chip">{h.channelLabel}</span>
+                    </div>
+                    <div className="customer-history-item-meta">
+                      {money(h.total)} · {paymentMethodLabel(h)} ·{' '}
+                      {h.payment_settled ? (
+                        <span className="chip ok">Paid</span>
+                      ) : (
+                        <span className="chip pending">Unpaid</span>
+                      )}
+                    </div>
+                  </button>
                 </li>
               ))}
             </ul>
@@ -425,6 +649,55 @@ export function CustomersPage() {
                 </button>
               </div>
             ) : null}
+
+            {selectedEntry ? (
+              <div className="customer-order-detail card card-flat">
+                <h3 className="inventory-section-title">Order details</h3>
+                <p className="muted-block">
+                  {new Date(selectedEntry.created_at).toLocaleString()} · {selectedEntry.channelLabel}
+                </p>
+                <p>
+                  <strong>Payment:</strong> {paymentMethodLabel(selectedEntry)} ·{' '}
+                  {selectedEntry.payment_settled ? (
+                    <span className="chip ok">Paid</span>
+                  ) : (
+                    <span className="chip pending">Unpaid</span>
+                  )}
+                </p>
+                <ul className="customer-order-detail-items">
+                  {selectedEntry.items.map((it, i) => (
+                    <li key={`${it.name}-${i}`}>
+                      {it.name} × {it.qty} — {money(it.unit_price * it.qty)}
+                    </li>
+                  ))}
+                </ul>
+                <p className="customer-order-detail-total">
+                  <strong>Total: {money(selectedEntry.total)}</strong>
+                </p>
+                <div className="row-actions">
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm"
+                    disabled={paymentBusy || selectedEntry.payment_settled}
+                    onClick={() => void setEntryPaymentSettled(selectedEntry, true)}
+                  >
+                    Mark as paid
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    disabled={paymentBusy || !selectedEntry.payment_settled}
+                    onClick={() => void setEntryPaymentSettled(selectedEntry, false)}
+                  >
+                    Mark as unpaid
+                  </button>
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSelectedEntry(null)}>
+                    Close detail
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
             <button type="button" className="btn btn-ghost btn-sm" onClick={closeHistory}>
               Close
             </button>

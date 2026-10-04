@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 
 import { useAuth } from '../auth/AuthProvider';
-import { navigateFromAdminNotification } from '../lib/notificationNavigation';
 import { supabase } from '../lib/supabase';
 import { useNotifications } from '../notifications/NotificationsProvider';
 
@@ -55,7 +53,6 @@ function CloseIcon() {
 }
 
 export function AdminNotificationsButton({ placement = 'desktop' }: { placement?: 'desktop' | 'header' }) {
-  const navigate = useNavigate();
   const { user } = useAuth();
   const { unreadCount, refresh, toast, dismissToast } = useNotifications();
   const [open, setOpen] = useState(false);
@@ -128,24 +125,13 @@ export function AdminNotificationsButton({ placement = 'desktop' }: { placement?
   }
 
   async function onItemClick(n: NotifRow) {
+    const readAt = n.read_at ?? new Date().toISOString();
     if (!n.read_at) await markRead(n.id);
-    setSelected(n);
+    setSelected({ ...n, read_at: readAt });
   }
 
   function closeDetail() {
     setSelected(null);
-  }
-
-  function goFromDetail() {
-    if (!selected) return;
-    const n = selected;
-    setSelected(null);
-    setOpen(false);
-    navigateFromAdminNotification(navigate, {
-      kind: n.kind,
-      order_id: n.order_id,
-      data: n.data,
-    });
   }
 
   return (
@@ -267,10 +253,7 @@ export function AdminNotificationsButton({ placement = 'desktop' }: { placement?
             <p className="admin-notification-detail-body">{selected.body}</p>
             <p className="admin-notification-detail-time">{timeLabel(selected.created_at)}</p>
             <div className="admin-notification-detail-actions">
-              <button type="button" className="btn btn-primary btn-sm" onClick={goFromDetail}>
-                Open related page
-              </button>
-              <button type="button" className="btn btn-ghost btn-sm" onClick={closeDetail}>
+              <button type="button" className="btn btn-primary btn-sm" onClick={closeDetail}>
                 Close
               </button>
             </div>

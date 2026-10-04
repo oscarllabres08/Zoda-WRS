@@ -1,14 +1,8 @@
-const path = require('path');
 const { getDefaultConfig } = require('expo/metro-config');
-const { FileStore } = require('metro-cache');
 
-/** Per-app cache so customer + seller Metro can run together on Windows. */
 const config = getDefaultConfig(__dirname);
 
-config.cacheStores = [
-  new FileStore({
-    root: path.join(__dirname, '.metro-cache'),
-  }),
-];
+/** Bust stale Windows cache entries that break SSR with "dependencies is not iterable". */
+config.cacheVersion = 'seller-v3';
 
 module.exports = config;

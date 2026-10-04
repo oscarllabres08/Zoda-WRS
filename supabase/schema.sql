@@ -493,20 +493,39 @@
   as $$
   declare
     v_order public.orders%rowtype;
-    v_cnt int;
-    item_summary text;
+    v_item_count int;
+    v_body text;
   begin
-    select count(*)::int into v_cnt from public.order_items where order_id = new.order_id;
-    if v_cnt <> 1 then
-      return new;
-    end if;
-
     select * into v_order from public.orders where id = new.order_id;
     if not found then
       return new;
     end if;
 
-    item_summary := coalesce(new.product_name, 'Item') || ' • Qty ' || new.quantity::text;
+    if exists (
+      select 1
+      from public.notifications n
+      where n.order_id = v_order.id
+        and n.kind = 'new_order'
+    ) then
+      return new;
+    end if;
+
+    if new.product_id is null and coalesce(new.product_name, '') ilike 'delivery%' then
+      return new;
+    end if;
+
+    select count(*)::int
+    into v_item_count
+    from public.order_items oi
+    where oi.order_id = new.order_id
+      and oi.product_id is not null;
+
+    v_body := coalesce(v_order.customer_name, 'Customer') || ' placed an order';
+    if v_item_count > 1 then
+      v_body := v_body || ' (' || v_item_count::text || ' items).';
+    else
+      v_body := v_body || '. ' || coalesce(new.product_name, 'Item') || ' • Qty ' || new.quantity::text;
+    end if;
 
     insert into public.notifications(recipient_id, order_id, kind, title, body, data)
     values (
@@ -514,15 +533,36 @@
       v_order.id,
       'new_order',
       'New order',
-      coalesce(v_order.customer_name, 'Customer') || ' placed an order. ' || item_summary,
+      v_body,
       jsonb_build_object(
         'orderId', v_order.id,
         'app', 'seller',
         'customerName', v_order.customer_name,
+        'itemCount', v_item_count,
         'firstItem', new.product_name,
         'qty', new.quantity
       )
     );
+
+    insert into public.notifications(recipient_id, order_id, kind, title, body, data)
+    select
+      p.user_id,
+      v_order.id,
+      'new_order',
+      'New order',
+      v_body,
+      jsonb_build_object(
+        'orderId', v_order.id,
+        'app', 'seller',
+        'customerName', v_order.customer_name,
+        'itemCount', v_item_count,
+        'firstItem', new.product_name,
+        'qty', new.quantity
+      )
+    from public.profiles p
+    where p.seller_workspace_owner_id = v_order.seller_id
+      and p.seller_team_role = 'staff'
+      and p.seller_join_status = 'approved';
 
     return new;
   end;
@@ -1359,10 +1399,28 @@
   create table if not exists public.pos_sales (
     id uuid primary key default gen_random_uuid(),
     seller_id uuid not null references public.profiles(user_id) on delete cascade,
+    customer_name text,
+    payment_method text not null default 'cash',
+    payment_settled boolean not null default true,
+    cash_received numeric(12,2),
+    change_due numeric(12,2),
     created_at timestamptz not null default now()
   );
 
+  alter table public.pos_sales add column if not exists customer_name text;
+  alter table public.pos_sales add column if not exists payment_method text not null default 'cash';
+  alter table public.pos_sales add column if not exists payment_settled boolean not null default true;
+  alter table public.pos_sales add column if not exists cash_received numeric(12,2);
+  alter table public.pos_sales add column if not exists change_due numeric(12,2);
+
+  alter table public.pos_sales drop constraint if exists pos_sales_payment_method_check;
+  alter table public.pos_sales add constraint pos_sales_payment_method_check
+    check (payment_method in ('cash', 'gcash'));
+
   create index if not exists pos_sales_seller_id_created_idx on public.pos_sales(seller_id, created_at desc);
+  create index if not exists pos_sales_seller_customer_name_idx
+    on public.pos_sales (seller_id, lower(trim(customer_name)))
+    where customer_name is not null and trim(customer_name) <> '';
 
   create table if not exists public.pos_sale_items (
     id uuid primary key default gen_random_uuid(),
@@ -1389,6 +1447,12 @@
   on public.pos_sales for insert
   with check (public.seller_business_id(auth.uid()) = seller_id and public.is_seller(auth.uid()));
 
+  drop policy if exists "pos_sales seller update own" on public.pos_sales;
+  create policy "pos_sales seller update own"
+  on public.pos_sales for update
+  using (public.seller_business_id(auth.uid()) = seller_id and public.is_seller(auth.uid()))
+  with check (public.seller_business_id(auth.uid()) = seller_id and public.is_seller(auth.uid()));
+
   drop policy if exists "pos_sale_items seller read own" on public.pos_sale_items;
   create policy "pos_sale_items seller read own"
   on public.pos_sale_items for select
@@ -1409,6 +1473,109 @@
       where ps.id = pos_sale_id
         and ps.seller_id = public.seller_business_id(auth.uid())
         and public.is_seller(auth.uid())
+    )
+  );
+
+  -- Business expenses (admin web — store owner only)
+  do $exp_enum$
+  begin
+    if not exists (select 1 from pg_type where typname = 'business_expense_type') then
+      create type public.business_expense_type as enum (
+        'water_bill',
+        'electric_bill',
+        'salaries_wages',
+        'gas_allowance',
+        'foods',
+        'others'
+      );
+    end if;
+  end $exp_enum$;
+
+  do $exp_gas$
+  begin
+    if not exists (
+      select 1 from pg_enum e
+      join pg_type t on e.enumtypid = t.oid
+      where t.typname = 'business_expense_type' and e.enumlabel = 'gas_allowance'
+    ) then
+      alter type public.business_expense_type add value 'gas_allowance';
+    end if;
+  end $exp_gas$;
+
+  create table if not exists public.business_expenses (
+    id uuid primary key default gen_random_uuid(),
+    seller_id uuid not null references public.profiles(user_id) on delete cascade,
+    business_unit text not null default 'wrs' check (business_unit in ('wrs', 'laundry')),
+    expense_type public.business_expense_type not null,
+    others_label text,
+    amount numeric(12, 2) not null check (amount > 0),
+    expense_date date not null default (timezone('utc', now()))::date,
+    notes text,
+    created_at timestamptz not null default now()
+  );
+
+  alter table public.business_expenses
+    add column if not exists business_unit text not null default 'wrs'
+    check (business_unit in ('wrs', 'laundry'));
+
+  create index if not exists business_expenses_seller_date_idx
+    on public.business_expenses (seller_id, expense_date desc);
+
+  create index if not exists business_expenses_seller_unit_date_idx
+    on public.business_expenses (seller_id, business_unit, expense_date desc);
+
+  alter table public.business_expenses enable row level security;
+
+  drop policy if exists "business_expenses owner read" on public.business_expenses;
+  create policy "business_expenses owner read"
+  on public.business_expenses for select
+  using (
+    seller_id = auth.uid()
+    and exists (
+      select 1 from public.profiles p
+      where p.user_id = auth.uid()
+        and p.role = 'seller'
+        and coalesce(p.seller_team_role, 'owner') = 'owner'
+    )
+  );
+
+  drop policy if exists "business_expenses owner insert" on public.business_expenses;
+  create policy "business_expenses owner insert"
+  on public.business_expenses for insert
+  with check (
+    seller_id = auth.uid()
+    and exists (
+      select 1 from public.profiles p
+      where p.user_id = auth.uid()
+        and p.role = 'seller'
+        and coalesce(p.seller_team_role, 'owner') = 'owner'
+    )
+  );
+
+  drop policy if exists "business_expenses owner update" on public.business_expenses;
+  create policy "business_expenses owner update"
+  on public.business_expenses for update
+  using (
+    seller_id = auth.uid()
+    and exists (
+      select 1 from public.profiles p
+      where p.user_id = auth.uid()
+        and p.role = 'seller'
+        and coalesce(p.seller_team_role, 'owner') = 'owner'
+    )
+  )
+  with check (seller_id = auth.uid());
+
+  drop policy if exists "business_expenses owner delete" on public.business_expenses;
+  create policy "business_expenses owner delete"
+  on public.business_expenses for delete
+  using (
+    seller_id = auth.uid()
+    and exists (
+      select 1 from public.profiles p
+      where p.user_id = auth.uid()
+        and p.role = 'seller'
+        and coalesce(p.seller_team_role, 'owner') = 'owner'
     )
   );
 

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Pressable, TextInput, View, type TextInputProps } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
+import { defaultInputPlaceholder } from '../../lib/inputPlaceholder';
 import { theme } from '../theme';
 import { Text } from './Text';
 
@@ -11,6 +12,8 @@ export function TextField({
   inputStyle,
   secureTextEntry,
   passwordToggleable,
+  placeholder,
+  editable,
   ...rest
 }: TextInputProps & {
   label: string;
@@ -19,6 +22,7 @@ export function TextField({
   passwordToggleable?: boolean;
 }) {
   const [obscured, setObscured] = useState(true);
+  const resolvedPlaceholder = placeholder ?? defaultInputPlaceholder(label, editable);
 
   const isMultiline = !!rest.multiline;
 
@@ -53,6 +57,8 @@ export function TextField({
         >
           <TextInput
             {...rest}
+            editable={editable}
+            placeholder={resolvedPlaceholder}
             placeholderTextColor="rgba(106,122,149,0.9)"
             secureTextEntry={obscured}
             style={[
@@ -81,6 +87,8 @@ export function TextField({
       ) : (
         <TextInput
           {...rest}
+          editable={editable}
+          placeholder={resolvedPlaceholder}
           placeholderTextColor="rgba(106,122,149,0.9)"
           secureTextEntry={secureTextEntry}
           style={[baseInputStyle, inputStyle as any]}

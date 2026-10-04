@@ -90,7 +90,9 @@ export function SalesAnalyticsPage() {
 
   const [exportMonth, setExportMonth] = useState(now.getMonth());
 
-
+  const [exportOpen, setExportOpen] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(min-width: 768px)').matches
+  );
 
   const branch =
 
@@ -140,7 +142,13 @@ export function SalesAnalyticsPage() {
 
   }, [load]);
 
-
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 768px)');
+    const sync = () => setExportOpen(mq.matches);
+    sync();
+    mq.addEventListener('change', sync);
+    return () => mq.removeEventListener('change', sync);
+  }, []);
 
   const selectedDateLabel = useMemo(() => {
 
@@ -360,9 +368,12 @@ export function SalesAnalyticsPage() {
 
 
 
-        <div className="sales-toolbar-export">
-
-          <span className="sales-export-title">Export report (Excel / Google Sheets)</span>
+        <details
+          className="sales-export-details sales-toolbar-export"
+          open={exportOpen}
+          onToggle={(e) => setExportOpen(e.currentTarget.open)}
+        >
+          <summary className="sales-export-title">Export report (Excel / Google Sheets)</summary>
 
           <div className="sales-export-stack">
 
@@ -455,8 +466,7 @@ export function SalesAnalyticsPage() {
             </div>
 
           </div>
-
-        </div>
+        </details>
 
       </div>
 

@@ -16,6 +16,7 @@ type OrderRow = {
 type PosRow = {
   id: string;
   created_at: string;
+  payment_settled?: boolean | null;
   pos_sale_items: { product_name: string; unit_price: number; quantity: number; product_id?: string | null }[];
 };
 
@@ -251,13 +252,17 @@ function aggregate(
       prodMap.set(it.product_name, prev);
     }
 
+    const posPaid = s.payment_settled !== false;
+    if (posPaid) paidOrders += 1;
+    else unpaidOrders += 1;
+
     const names = (s.pos_sale_items ?? []).map((i) => i.product_name).slice(0, 2);
     recentSales.push({
       id: `p-${s.id}`,
       at,
       type: 'walk-in',
       amount: amt,
-      status: 'paid',
+      status: posPaid ? 'paid' : 'unpaid',
       productLabel: names.join(', ') || 'Walk-in sale',
     });
   }
@@ -274,7 +279,7 @@ function aggregate(
     onlineOrderCount,
     walkInTxnCount: posSales.length,
     totalOrderCount: onlineOrderCount + posSales.length,
-    paidOrders: paidOrders + posSales.length,
+    paidOrders,
     unpaidOrders,
     timeline,
     categoryTotals,
@@ -297,7 +302,7 @@ async function fetchRange(businessId: string, from: Date, to: Date): Promise<{ o
       .lte('created_at', toIso),
     supabase
       .from('pos_sales')
-      .select('id,created_at,pos_sale_items(product_name,unit_price,quantity,product_id)')
+      .select('id,created_at,payment_settled,pos_sale_items(product_name,unit_price,quantity,product_id)')
       .eq('seller_id', businessId)
       .gte('created_at', fromIso)
       .lte('created_at', toIso),

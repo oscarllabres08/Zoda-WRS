@@ -2,9 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 
 
 
-import { CategoryBarChart, SalesDonutChart, SalesLineChart } from '../components/SalesCharts';
-
-import { ModulePageHeader } from '../components/ModulePageHeader';
+import { CategoryBarChart, SalesBarChart, SalesDonutChart } from '../components/SalesCharts';
 
 import { useAuth } from '../auth/AuthProvider';
 
@@ -70,7 +68,7 @@ function parseDateInput(value: string): { year: number; month: number; day: numb
 
 export function SalesAnalyticsPage() {
 
-  const { businessId, profile } = useAuth();
+  const { businessId } = useAuth();
 
   const [displayGranularity, setDisplayGranularity] = useState<DisplayGranularity>('month');
 
@@ -89,16 +87,6 @@ export function SalesAnalyticsPage() {
   const [exportYear, setExportYear] = useState(now.getFullYear());
 
   const [exportMonth, setExportMonth] = useState(now.getMonth());
-
-  const [exportOpen, setExportOpen] = useState(
-    () => typeof window !== 'undefined' && window.matchMedia('(min-width: 768px)').matches
-  );
-
-  const branch =
-
-    profile?.display_name?.trim() ? `${profile.display_name.trim()} · Zoda WRS` : 'Zoda WRS Main Branch';
-
-
 
   const { year: filterYear, month: filterMonth, day: filterDay } = useMemo(
 
@@ -142,20 +130,9 @@ export function SalesAnalyticsPage() {
 
   }, [load]);
 
-  useEffect(() => {
-    const mq = window.matchMedia('(min-width: 768px)');
-    const sync = () => setExportOpen(mq.matches);
-    sync();
-    mq.addEventListener('change', sync);
-    return () => mq.removeEventListener('change', sync);
-  }, []);
-
-  const selectedDateLabel = useMemo(() => {
-
+  const compactDateLabel = useMemo(() => {
     const d = new Date(filterYear, filterMonth, filterDay);
-
-    return d.toLocaleDateString('en-US', { weekday: 'short', month: 'long', day: 'numeric', year: 'numeric' });
-
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   }, [filterYear, filterMonth, filterDay]);
 
 
@@ -268,112 +245,73 @@ export function SalesAnalyticsPage() {
 
     <div className="sales-analytics-layout">
 
-      <ModulePageHeader
-
-        title="Sales & Analytics"
-
-        subtitle="Track your sales performance and business insights."
-
-        branch={branch}
-
-      />
-
       {exportError ? <p className="error-text module-alert">{exportError}</p> : null}
-
-
 
       <div className="sales-toolbar card card-flat">
 
-        <div className="sales-toolbar-filter">
+        <div className="sales-toolbar-controls">
 
-          <div className="sales-toolbar-filter-head">
+          <div className="sales-period-tabs">
 
-            <span className="sales-toolbar-heading">Display by</span>
+            {DISPLAY_GRANULARITY.map((p) => (
 
-            <div className="sales-period-tabs">
+              <button
 
-              {DISPLAY_GRANULARITY.map((p) => (
+                key={p.id}
 
-                <button
+                type="button"
 
-                  key={p.id}
+                className={`pos-category-tab${displayGranularity === p.id ? ' active' : ''}`}
 
-                  type="button"
+                onClick={() => setDisplayGranularity(p.id)}
 
-                  className={`pos-category-tab${displayGranularity === p.id ? ' active' : ''}`}
+              >
 
-                  onClick={() => setDisplayGranularity(p.id)}
+                {p.label}
 
-                >
+              </button>
 
-                  {p.label}
-
-                </button>
-
-              ))}
-
-            </div>
+            ))}
 
           </div>
 
-          <div className="sales-filter-fields">
+          <label className="sales-date-picker-btn sales-date-picker-btn--toolbar">
 
-            <label className="sales-date-picker-btn">
+            <span className="sales-date-picker-icon" aria-hidden>
 
-              <span className="sales-date-picker-icon" aria-hidden>
+              📅
 
-                📅
+            </span>
 
-              </span>
+            <span className="sales-date-picker-text">
 
-              <span className="sales-date-picker-text">
+              <strong>{compactDateLabel}</strong>
 
-                <span className="sales-date-picker-label">Select date</span>
+            </span>
 
-                <strong>{selectedDateLabel}</strong>
+            <input
 
-              </span>
+              type="date"
 
-              <input
+              className="sales-date-input-overlay"
 
-                type="date"
+              value={selectedDate}
 
-                className="sales-date-input-overlay"
+              onChange={(e) => {
 
-                value={selectedDate}
+                if (e.target.value) setSelectedDate(e.target.value);
 
-                onChange={(e) => {
+              }}
 
-                  if (e.target.value) setSelectedDate(e.target.value);
+              aria-label="Select day, month, and year"
 
-                }}
+            />
 
-                aria-label="Select day, month, and year"
-
-              />
-
-            </label>
-
-            <p className="sales-filter-summary">
-
-              Chart: <strong>{filterLabel}</strong>
-
-              {displayGranularity === 'month' ? ` · ${data?.timeline.length ?? 0} days` : ' · 12 months'}
-
-            </p>
-
-          </div>
+          </label>
 
         </div>
 
-
-
-        <details
-          className="sales-export-details sales-toolbar-export"
-          open={exportOpen}
-          onToggle={(e) => setExportOpen(e.currentTarget.open)}
-        >
-          <summary className="sales-export-title">Export report (Excel / Google Sheets)</summary>
+        <div className="sales-toolbar-export">
 
           <div className="sales-export-stack">
 
@@ -415,7 +353,7 @@ export function SalesAnalyticsPage() {
 
               >
 
-                {exporting === 'month' ? 'Exporting…' : 'Export'}
+                {exporting === 'month' ? 'Exporting…' : 'Export month'}
 
               </button>
 
@@ -459,14 +397,15 @@ export function SalesAnalyticsPage() {
 
               >
 
-                {exporting === 'year' ? 'Exporting…' : 'Export'}
+                {exporting === 'year' ? 'Exporting…' : 'Export year'}
 
               </button>
 
             </div>
 
           </div>
-        </details>
+
+        </div>
 
       </div>
 
@@ -504,9 +443,17 @@ export function SalesAnalyticsPage() {
 
               <h2 className="inventory-section-title">Sales Overview</h2>
 
+              <p className="sales-chart-period-hint">
+
+                {filterLabel}
+
+                {displayGranularity === 'month' ? ` · ${data.timeline.length} days` : ' · 12 months'}
+
+              </p>
+
               <div className="sales-chart-legend">
 
-                <span><i className="lg total" /> Total</span>
+                <span><i className="lg total" /> Total (bar height)</span>
 
                 <span><i className="lg online" /> Online</span>
 
@@ -514,7 +461,7 @@ export function SalesAnalyticsPage() {
 
               </div>
 
-              <SalesLineChart points={data.timeline} slotWidth={chartSlotWidth} />
+              <SalesBarChart points={data.timeline} slotWidth={chartSlotWidth} />
 
             </div>
 
@@ -546,35 +493,59 @@ export function SalesAnalyticsPage() {
 
               <h2 className="inventory-section-title">Top Selling Products</h2>
 
+              {data.topProducts.length > 0 ? (
+                <p className="sales-table-hint">Swipe sideways to see all columns</p>
+              ) : null}
+
               {data.topProducts.length === 0 ? (
 
                 <p className="muted-block">No sales in this period.</p>
 
               ) : (
 
-                <ol className="sales-top-list">
+                <div className="table-wrap sales-table-scroll">
 
-                  {data.topProducts.map((p, i) => (
+                  <table className="data-table sales-top-table">
 
-                    <li key={p.name}>
+                    <thead>
 
-                      <span className="sales-top-rank">{i + 1}</span>
+                      <tr>
 
-                      <div className="sales-top-body">
+                        <th>#</th>
 
-                        <strong>{p.name}</strong>
+                        <th>Product</th>
 
-                        <span className="muted-block">{p.units} sold</span>
+                        <th>Units</th>
 
-                      </div>
+                        <th>Revenue</th>
 
-                      <span className="sales-top-revenue">{money(p.revenue)}</span>
+                      </tr>
 
-                    </li>
+                    </thead>
 
-                  ))}
+                    <tbody>
 
-                </ol>
+                      {data.topProducts.map((p, i) => (
+
+                        <tr key={p.name}>
+
+                          <td>{i + 1}</td>
+
+                          <td>{p.name}</td>
+
+                          <td>{p.units}</td>
+
+                          <td>{money(p.revenue)}</td>
+
+                        </tr>
+
+                      ))}
+
+                    </tbody>
+
+                  </table>
+
+                </div>
 
               )}
 
@@ -586,7 +557,11 @@ export function SalesAnalyticsPage() {
 
               <h2 className="inventory-section-title">Recent Sales</h2>
 
-              <div className="table-wrap">
+              {data.recentSales.length > 0 ? (
+                <p className="sales-table-hint">Swipe sideways to see all columns</p>
+              ) : null}
+
+              <div className="table-wrap sales-table-scroll">
 
                 <table className="data-table sales-recent-table">
 

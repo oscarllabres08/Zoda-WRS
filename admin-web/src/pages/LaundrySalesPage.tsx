@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
-import { SalesDonutChart, SalesLineChart } from '../components/SalesCharts';
+import { SalesBarChart, SalesDonutChart } from '../components/SalesCharts';
 import { ModulePageHeader } from '../components/ModulePageHeader';
 import { useAuth } from '../auth/AuthProvider';
 import { money } from '../lib/format';
@@ -235,7 +235,11 @@ export function LaundrySalesPage() {
           <div className="sales-charts-grid">
             <div className="card card-flat sales-chart-card">
               <h2 className="inventory-section-title">Sales overview</h2>
-              <SalesLineChart points={data.timeline} slotWidth={chartSlotWidth} />
+              <div className="sales-chart-legend">
+                <span><i className="lg total" /> Total (bar height)</span>
+                <span><i className="lg walk" /> POS sales</span>
+              </div>
+              <SalesBarChart points={data.timeline} slotWidth={chartSlotWidth} />
             </div>
             <div className="card card-flat sales-chart-card">
               <h2 className="inventory-section-title">POS sales</h2>

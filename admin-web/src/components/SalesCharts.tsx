@@ -14,6 +14,117 @@ const DEFAULT_SLOT_WIDTH = 44;
 
 
 
+export function SalesBarChart({
+  points,
+  slotWidth = DEFAULT_SLOT_WIDTH,
+}: {
+  points: TimelinePoint[];
+  slotWidth?: number;
+}) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const h = 220;
+  const pad = { l: 48, r: 16, t: 16, b: 36 };
+  const innerH = h - pad.t - pad.b;
+  const n = Math.max(1, points.length);
+  const plotW = n * slotWidth;
+  const w = pad.l + plotW + pad.r;
+  const maxY = Math.max(1, ...points.map((p) => p.total));
+  const barW = Math.min(slotWidth * 0.58, 36);
+
+  const toX = (i: number) => pad.l + (i + 0.5) * slotWidth;
+  const toY = (v: number) => pad.t + innerH - (v / maxY) * innerH;
+
+  const yTicks = 4;
+  const yLines = Array.from({ length: yTicks + 1 }, (_, i) => {
+    const v = (maxY / yTicks) * i;
+    return { v, y: toY(v) };
+  });
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || points.length === 0) return;
+    let peakIdx = 0;
+    for (let i = 1; i < points.length; i++) {
+      if (points[i].total > points[peakIdx].total) peakIdx = i;
+    }
+    if (points[peakIdx].total <= 0) return;
+    const x = pad.l + (peakIdx + 0.5) * slotWidth;
+    el.scrollLeft = Math.max(0, x - el.clientWidth / 2);
+  }, [points, slotWidth]);
+
+  if (points.length === 0) {
+    return <p className="muted-block">No chart data for this period.</p>;
+  }
+
+  return (
+    <div className="sales-line-chart-wrap">
+      <div
+        ref={scrollRef}
+        className="sales-line-chart-scroll"
+        tabIndex={0}
+        role="region"
+        aria-label="Sales timeline (scroll horizontally)"
+      >
+        <svg
+          className="sales-chart-svg sales-chart-svg--scroll"
+          viewBox={`0 0 ${w} ${h}`}
+          width={w}
+          height={h}
+          preserveAspectRatio="xMinYMin meet"
+          role="img"
+          aria-label="Sales overview bar chart"
+        >
+          {yLines.map((t) => (
+            <g key={t.v}>
+              <line x1={pad.l} y1={t.y} x2={w - pad.r} y2={t.y} stroke="rgba(18,101,214,0.12)" />
+              <text x={pad.l - 8} y={t.y + 4} textAnchor="end" className="sales-chart-axis">
+                {t.v >= 1000 ? `${Math.round(t.v / 1000)}k` : Math.round(t.v)}
+              </text>
+            </g>
+          ))}
+          {points.map((p, i) => {
+            if (p.total <= 0) return null;
+            const cx = toX(i);
+            const x = cx - barW / 2;
+            const onlineH = (p.online / maxY) * innerH;
+            const walkH = (p.walkIn / maxY) * innerH;
+            const baseY = pad.t + innerH;
+            const onlineY = baseY - onlineH;
+            const walkY = onlineY - walkH;
+            const hasOnline = p.online > 0;
+            const hasWalk = p.walkIn > 0;
+
+            return (
+              <g key={p.key}>
+                {hasOnline ? (
+                  <rect
+                    x={x}
+                    y={onlineY}
+                    width={barW}
+                    height={onlineH}
+                    fill="#3ab1ff"
+                    rx={hasWalk ? 0 : 4}
+                    ry={hasWalk ? 0 : 4}
+                  />
+                ) : null}
+                {hasWalk ? (
+                  <rect x={x} y={walkY} width={barW} height={walkH} fill="#2ecc71" rx={4} ry={4} />
+                ) : null}
+                <title>{`${p.label}: ${money(p.total)} total (${money(p.online)} online, ${money(p.walkIn)} walk-in)`}</title>
+              </g>
+            );
+          })}
+          {points.map((p, i) => (
+            <text key={p.key} x={toX(i)} y={h - 10} textAnchor="middle" className="sales-chart-axis">
+              {p.label}
+            </text>
+          ))}
+        </svg>
+      </div>
+    </div>
+  );
+}
+
 export function SalesLineChart({
 
   points,

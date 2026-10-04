@@ -3,11 +3,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ContainerReturnPanel } from '../components/ContainerReturnPanel';
 import { PageHeader } from '../components/PageHeader';
 import { useAuth } from '../auth/AuthProvider';
-import { money } from '../lib/format';
+import { money, publicWrsAssetUrl } from '../lib/format';
 import { orderGrandTotal } from '../lib/orderTotal';
 import {
   formatPosPaymentMethod,
-  isPosCustomerRowId,
   normalizeCustomerName,
   posCustomerRowId,
   posNameFromRowId,
@@ -17,6 +16,7 @@ import { supabase } from '../lib/supabase';
 type CustomerRow = {
   id: string;
   name: string;
+  avatarPath: string | null;
   phone: string;
   address: string;
   orderCount: number;
@@ -148,7 +148,7 @@ export function CustomersPage() {
 
     const { data: customers, error: custErr } = await supabase
       .from('profiles')
-      .select('user_id,display_name,phone,address')
+      .select('user_id,display_name,phone,address,avatar_path')
       .eq('role', 'customer')
       .order('created_at', { ascending: false })
       .limit(400);
@@ -285,7 +285,13 @@ export function CustomersPage() {
 
     const mergedPosKeys = new Set<string>();
     const list: CustomerRow[] = (customers ?? []).map((c) => {
-      const p = c as { user_id: string; display_name: string | null; phone: string | null; address: string | null };
+      const p = c as {
+        user_id: string;
+        display_name: string | null;
+        phone: string | null;
+        address: string | null;
+        avatar_path: string | null;
+      };
       const a = agg.get(p.user_id);
       const displayName = p.display_name?.trim() || 'Customer';
       const nameKey = normalizeCustomerName(displayName);
@@ -300,6 +306,7 @@ export function CustomersPage() {
       return {
         id: p.user_id,
         name: displayName,
+        avatarPath: p.avatar_path ?? null,
         phone: p.phone?.trim() || '—',
         address: p.address?.trim() || '—',
         orderCount: (a?.count ?? 0) + (pos?.count ?? 0),
@@ -320,6 +327,7 @@ export function CustomersPage() {
       list.push({
         id: posCustomerRowId(key),
         name: pos.displayName,
+        avatarPath: null,
         phone: 'Walk-in POS',
         address: '—',
         orderCount: pos.count,
@@ -558,15 +566,29 @@ export function CustomersPage() {
               </tr>
             </thead>
             <tbody>
-              {filtered.slice(0, 100).map((r) => (
+              {filtered.slice(0, 100).map((r) => {
+                const avatarUrl = publicWrsAssetUrl(supabase, r.avatarPath);
+                const initial = (r.name.trim()[0] ?? 'C').toUpperCase();
+                return (
                 <tr key={r.id}>
                   <td>
-                    <strong>{r.name}</strong>
-                    {r.isPosOnly ? (
-                      <div style={{ fontSize: 12, color: 'var(--muted)' }}>Walk-in POS</div>
-                    ) : (
-                      <div style={{ fontSize: 12, color: 'var(--muted)', maxWidth: 220 }}>{r.phone}</div>
-                    )}
+                    <div className="customer-list-name-cell">
+                      <span className="customer-list-avatar" aria-hidden>
+                        {avatarUrl ? (
+                          <img src={avatarUrl} alt="" />
+                        ) : (
+                          <span className="customer-list-avatar-fallback">{initial}</span>
+                        )}
+                      </span>
+                      <div className="customer-list-name-meta">
+                        <strong>{r.name}</strong>
+                        {r.isPosOnly ? (
+                          <div className="customer-list-sub">Walk-in POS</div>
+                        ) : (
+                          <div className="customer-list-sub">{r.phone}</div>
+                        )}
+                      </div>
+                    </div>
                   </td>
                   <td>{r.orderCount}</td>
                   <td>{money(r.totalSpent)}</td>
@@ -605,7 +627,8 @@ export function CustomersPage() {
                     </button>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>

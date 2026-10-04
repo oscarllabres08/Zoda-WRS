@@ -62,13 +62,13 @@ export function ImageUploadField({ label = 'Product image', hint, disabled, prev
               📷
             </span>
             <span className="upload-title">Click to upload image or drag and drop</span>
-            <span className="upload-sub">PNG, JPG, WebP — auto-compressed before upload</span>
+            <span className="upload-sub">PNG, JPG, WebP — resized &amp; compressed (max ~450 KB)</span>
           </div>
         )}
         <input
           ref={inputRef}
           type="file"
-          accept="image/jpeg,image/png,image/webp,image/gif"
+          accept="image/jpeg,image/png,image/webp,image/gif,image/heic,image/heif,.heic,.heif"
           hidden
           disabled={disabled}
           onChange={(e) => pick(e.target.files?.[0])}

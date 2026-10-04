@@ -34,6 +34,32 @@ type OrderHistoryRow = {
 type PayFilter = 'all' | 'paid' | 'unpaid';
 type ContainerFilter = 'all' | 'borrowed';
 
+const ORDER_HISTORY_PAGE = 10;
+
+const ORDER_HISTORY_SELECT =
+  'id,created_at,status,payment_settled,payment_method,delivery_fee,order_items(product_name,unit_price,quantity)';
+
+type OrderHistorySource = {
+  id: string;
+  created_at: string;
+  status: string;
+  payment_settled: boolean | null;
+  payment_method: string | null;
+  delivery_fee: number | null;
+  order_items: { product_name?: string | null; unit_price: number; quantity: number }[];
+};
+
+function mapOrderHistoryRow(o: OrderHistorySource): OrderHistoryRow {
+  return {
+    id: o.id,
+    created_at: o.created_at,
+    status: o.status,
+    payment_settled: o.payment_settled,
+    payment_method: o.payment_method,
+    total: orderGrandTotal(o.order_items, o.delivery_fee),
+  };
+}
+
 export function CustomersPage() {
   const { businessId } = useAuth();
   const [rows, setRows] = useState<CustomerRow[]>([]);
@@ -45,6 +71,8 @@ export function CustomersPage() {
   const [historyFor, setHistoryFor] = useState<CustomerRow | null>(null);
   const [history, setHistory] = useState<OrderHistoryRow[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyHasMore, setHistoryHasMore] = useState(false);
+  const [historyLoadingMore, setHistoryLoadingMore] = useState(false);
   const [returnBusyId, setReturnBusyId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -188,41 +216,58 @@ export function CustomersPage() {
     };
   }, [businessId, load]);
 
+  const fetchCustomerOrders = useCallback(
+    async (customerId: string, offset: number) => {
+      if (!businessId) return [] as OrderHistoryRow[];
+      const { data, error: err } = await supabase
+        .from('orders')
+        .select(ORDER_HISTORY_SELECT)
+        .eq('seller_id', businessId)
+        .eq('customer_id', customerId)
+        .order('created_at', { ascending: false })
+        .range(offset, offset + ORDER_HISTORY_PAGE - 1);
+      if (err) throw err;
+      return (data ?? []).map((o) => mapOrderHistoryRow(o as OrderHistorySource));
+    },
+    [businessId]
+  );
+
   async function openHistory(c: CustomerRow) {
     if (!businessId) return;
     setHistoryFor(c);
+    setHistory([]);
+    setHistoryHasMore(false);
     setHistoryLoading(true);
-    const { data } = await supabase
-      .from('orders')
-      .select(
-        'id,created_at,status,payment_settled,payment_method,delivery_fee,order_items(product_name,unit_price,quantity)'
-      )
-      .eq('seller_id', businessId)
-      .eq('customer_id', c.id)
-      .order('created_at', { ascending: false })
-      .limit(30);
-    const list: OrderHistoryRow[] = (data ?? []).map((o) => {
-      const row = o as {
-        id: string;
-        created_at: string;
-        status: string;
-        payment_settled: boolean | null;
-        payment_method: string | null;
-        delivery_fee: number | null;
-        order_items: { product_name?: string | null; unit_price: number; quantity: number }[];
-      };
-      const total = orderGrandTotal(row.order_items, row.delivery_fee);
-      return {
-        id: row.id,
-        created_at: row.created_at,
-        status: row.status,
-        payment_settled: row.payment_settled,
-        payment_method: row.payment_method,
-        total,
-      };
-    });
-    setHistory(list);
-    setHistoryLoading(false);
+    try {
+      const list = await fetchCustomerOrders(c.id, 0);
+      setHistory(list);
+      setHistoryHasMore(list.length === ORDER_HISTORY_PAGE);
+    } catch (ex) {
+      setError(ex instanceof Error ? ex.message : 'Could not load order history');
+      setHistory([]);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
+
+  async function showMoreHistory() {
+    if (!historyFor || historyLoadingMore || !historyHasMore) return;
+    setHistoryLoadingMore(true);
+    try {
+      const next = await fetchCustomerOrders(historyFor.id, history.length);
+      setHistory((prev) => [...prev, ...next]);
+      setHistoryHasMore(next.length === ORDER_HISTORY_PAGE);
+    } catch (ex) {
+      setError(ex instanceof Error ? ex.message : 'Could not load more orders');
+    } finally {
+      setHistoryLoadingMore(false);
+    }
+  }
+
+  function closeHistory() {
+    setHistoryFor(null);
+    setHistory([]);
+    setHistoryHasMore(false);
   }
 
   const filtered = useMemo(() => {
@@ -343,7 +388,7 @@ export function CustomersPage() {
       </div>
 
       {historyFor ? (
-        <div className="modal-backdrop" role="presentation" onClick={() => setHistoryFor(null)}>
+        <div className="modal-backdrop" role="presentation" onClick={closeHistory}>
           <div className="modal-card" role="dialog" onClick={(e) => e.stopPropagation()}>
             <h2 className="card-title">{historyFor.name} — order history</h2>
             {historyLoading ? <p className="muted-block">Loading…</p> : null}
@@ -368,7 +413,19 @@ export function CustomersPage() {
                 </li>
               ))}
             </ul>
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setHistoryFor(null)}>
+            {historyHasMore ? (
+              <div style={{ marginBottom: 12, textAlign: 'center' }}>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  disabled={historyLoadingMore}
+                  onClick={() => void showMoreHistory()}
+                >
+                  {historyLoadingMore ? 'Loading…' : 'Show more'}
+                </button>
+              </div>
+            ) : null}
+            <button type="button" className="btn btn-ghost btn-sm" onClick={closeHistory}>
               Close
             </button>
           </div>

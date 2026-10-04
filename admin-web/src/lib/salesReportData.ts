@@ -1,6 +1,17 @@
 import { orderCountsTowardOnlineSales } from './orderSalesEligible';
+import { formatPosPaymentMethod } from './posPayment';
 import { categoryFromProductName, type SalesCategoryKey } from './productCategory';
 import { supabase } from './supabase';
+
+export function formatSalePaymentMethod(type: 'online' | 'walk-in', method: string | null | undefined): string {
+  if (type === 'walk-in') return formatPosPaymentMethod(method);
+  const m = (method ?? '').toLowerCase();
+  if (m === 'gcash') return 'GCash';
+  if (m === 'cod' || m === 'cash') return 'Cash';
+  if (m === 'maya') return 'Maya';
+  if (m === 'utang') return 'Utang';
+  return method?.trim() || '—';
+}
 
 export type DashboardPeriod = 'week' | 'month' | 'year';
 
@@ -8,6 +19,7 @@ type OrderRow = {
   id: string;
   created_at: string;
   status: string;
+  customer_name: string;
   payment_settled: boolean | null;
   payment_method: string | null;
   order_items: { product_name: string; unit_price: number; quantity: number; product_id?: string | null }[];
@@ -16,7 +28,9 @@ type OrderRow = {
 type PosRow = {
   id: string;
   created_at: string;
+  customer_name?: string | null;
   payment_settled?: boolean | null;
+  payment_method?: string | null;
   pos_sale_items: { product_name: string; unit_price: number; quantity: number; product_id?: string | null }[];
 };
 
@@ -34,8 +48,12 @@ export type RecentSaleRow = {
   type: 'online' | 'walk-in';
   amount: number;
   status: 'paid' | 'unpaid';
+  paymentMethod: string;
   productLabel: string;
+  customerName: string;
 };
+
+export const RECENT_SALES_PAGE = 10;
 
 export type SalesDashboardData = {
   onlineSales: number;
@@ -97,6 +115,22 @@ export function previousPeriodBounds(period: DashboardPeriod, ref = new Date()):
 export function monthBounds(year: number, monthIndex: number): { from: Date; to: Date } {
   const from = new Date(year, monthIndex, 1, 0, 0, 0, 0);
   const to = new Date(year, monthIndex + 1, 0, 23, 59, 59, 999);
+  return { from, to };
+}
+
+export function dayBounds(year: number, monthIndex: number, day: number): { from: Date; to: Date } {
+  const from = new Date(year, monthIndex, day, 0, 0, 0, 0);
+  const to = new Date(year, monthIndex, day, 23, 59, 59, 999);
+  return { from, to };
+}
+
+/** Seven days ending on the given calendar date (inclusive). */
+export function weekEndingOn(ref: Date): { from: Date; to: Date } {
+  const to = new Date(ref);
+  to.setHours(23, 59, 59, 999);
+  const from = new Date(ref);
+  from.setDate(from.getDate() - 6);
+  from.setHours(0, 0, 0, 0);
   return { from, to };
 }
 
@@ -226,7 +260,9 @@ function aggregate(
         type: 'online',
         amount: amt,
         status: isPaid ? 'paid' : 'unpaid',
+        paymentMethod: formatSalePaymentMethod('online', o.payment_method),
         productLabel: names.join(', ') || 'Online order',
+        customerName: o.customer_name?.trim() || 'Customer',
       });
     }
   }
@@ -263,7 +299,9 @@ function aggregate(
       type: 'walk-in',
       amount: amt,
       status: posPaid ? 'paid' : 'unpaid',
+      paymentMethod: formatSalePaymentMethod('walk-in', s.payment_method),
       productLabel: names.join(', ') || 'Walk-in sale',
+      customerName: s.customer_name?.trim() || 'Walk-in customer',
     });
   }
 
@@ -284,7 +322,7 @@ function aggregate(
     timeline,
     categoryTotals,
     topProducts,
-    recentSales: recentSales.slice(0, 12),
+    recentSales: recentSales.slice(0, 200),
     prevTotalSales: 0,
     prevTotalOrders: 0,
   };
@@ -296,13 +334,13 @@ async function fetchRange(businessId: string, from: Date, to: Date): Promise<{ o
   const [ordersRes, posRes] = await Promise.all([
     supabase
       .from('orders')
-      .select('id,created_at,status,payment_settled,payment_method,order_items(product_name,unit_price,quantity,product_id)')
+      .select('id,created_at,status,customer_name,payment_settled,payment_method,order_items(product_name,unit_price,quantity,product_id)')
       .eq('seller_id', businessId)
       .gte('created_at', fromIso)
       .lte('created_at', toIso),
     supabase
       .from('pos_sales')
-      .select('id,created_at,payment_settled,pos_sale_items(product_name,unit_price,quantity,product_id)')
+      .select('id,created_at,customer_name,payment_settled,payment_method,pos_sale_items(product_name,unit_price,quantity,product_id)')
       .eq('seller_id', businessId)
       .gte('created_at', fromIso)
       .lte('created_at', toIso),
@@ -313,7 +351,7 @@ async function fetchRange(businessId: string, from: Date, to: Date): Promise<{ o
   };
 }
 
-export type SalesDisplayMode = 'day' | 'month' | 'year';
+export type SalesDisplayMode = 'today' | 'day' | 'month' | 'year';
 
 export type SalesOverviewMonth = {
   timeline: TimelinePoint[];
@@ -344,13 +382,38 @@ async function loadRangeDashboard(
   return data;
 }
 
-/** KPIs + chart for day / month / year display filters. */
+/** KPIs + chart for today / day / month / year display filters. */
 export async function loadSalesAnalyticsView(
   businessId: string,
   mode: SalesDisplayMode,
   year: number,
-  monthIndex: number
+  monthIndex: number,
+  day = 1
 ): Promise<SalesDashboardData> {
+  if (mode === 'today') {
+    const ref = new Date(year, monthIndex, day);
+    const { from, to } = dayBounds(year, monthIndex, day);
+    const prevRef = new Date(ref);
+    prevRef.setDate(prevRef.getDate() - 1);
+    const prev = dayBounds(prevRef.getFullYear(), prevRef.getMonth(), prevRef.getDate());
+    const weekRange = weekEndingOn(ref);
+
+    const productCats = await loadProductCategories(businessId);
+    const [currentDay, previousDay, weekData] = await Promise.all([
+      fetchRange(businessId, from, to),
+      fetchRange(businessId, prev.from, prev.to),
+      fetchRange(businessId, weekRange.from, weekRange.to),
+    ]);
+
+    const data = aggregate(currentDay.orders, currentDay.pos, productCats, 'week', from, to);
+    const weekAgg = aggregate(weekData.orders, weekData.pos, productCats, 'week', weekRange.from, weekRange.to);
+    data.timeline = weekAgg.timeline;
+    const prevAgg = aggregate(previousDay.orders, previousDay.pos, productCats, 'week', prev.from, prev.to);
+    data.prevTotalSales = prevAgg.totalSales;
+    data.prevTotalOrders = prevAgg.totalOrderCount;
+    return data;
+  }
+
   if (mode === 'day') {
     const { from, to } = monthBounds(year, monthIndex);
     const prev =
@@ -561,6 +624,17 @@ export async function fetchYearExportPayload(businessId: string, year: number): 
 }
 
 export function pctChange(current: number, previous: number): number | null {
-  if (previous <= 0) return current > 0 ? 100 : null;
+  if (previous <= 0) return null;
   return ((current - previous) / previous) * 100;
+}
+
+/** Percent change vs previous period — one decimal, no misleading rounding to 0%. */
+export function formatPctChangeLabel(current: number, previous: number): string | null {
+  if (previous <= 0) {
+    if (current > 0) return 'New vs previous period';
+    return null;
+  }
+  const pct = ((current - previous) / previous) * 100;
+  const sign = pct >= 0 ? '+' : '';
+  return `${sign}${pct.toFixed(1)}% vs previous period`;
 }

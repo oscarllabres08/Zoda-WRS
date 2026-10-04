@@ -19,8 +19,8 @@ import { GradientPressable, PrimaryGradient } from '../../ui/components/PrimaryG
 import { TextField } from '../../ui/components/TextField';
 import { Skeleton } from '../../ui/components/Skeleton';
 import { NotificationsMenu } from '../../ui/components/NotificationsMenu';
-import { CalendarPickerModal } from '../../ui/components/CalendarPickerModal';
 import { computeDeliveryFee, countDeliveryContainers } from '../../lib/deliveryFee';
+import { downloadRemoteImage } from '../../lib/downloadRemoteImage';
 import { theme } from '../../ui/theme';
 
 /** Order screen accents — aligned with Zoda logo theme */
@@ -48,31 +48,7 @@ type CheckoutWallet = {
   qr_image_path: string | null;
 };
 
-type PaymentMethod = 'cod' | 'gcash' | 'maya' | 'utang';
-
-function formatYmd(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
-function defaultDueYmd(): string {
-  const d = new Date();
-  d.setDate(d.getDate() + 7);
-  return formatYmd(d);
-}
-
-function startOfToday(): Date {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
-function parseYmdToDate(ymd: string): Date {
-  const [y, m, day] = ymd.split('-').map(Number);
-  return new Date(y ?? 0, (m ?? 1) - 1, day ?? 1, 12, 0, 0, 0);
-}
+type PaymentMethod = 'cod' | 'gcash' | 'maya';
 
 function checkoutLocationHintColor(message: string) {
   const m = message.toLowerCase();
@@ -85,17 +61,6 @@ function checkoutLocationHintColor(message: string) {
   )
     return theme.colors.muted;
   return theme.colors.danger;
-}
-
-function formatDueDateLabel(ymd: string): string {
-  const d = parseYmdToDate(ymd);
-  if (Number.isNaN(d.getTime())) return ymd;
-  return d.toLocaleDateString('en-PH', {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  });
 }
 
 function formatMoney(amount: number) {
@@ -147,25 +112,26 @@ export default function OrderScreen() {
   const [coords, setCoords] = useState<{ latitude: number; longitude: number } | null>(null);
   const [locationMessage, setLocationMessage] = useState<string | null>(null);
   const [locating, setLocating] = useState(false);
-  const [profileDefaults, setProfileDefaults] = useState<{ display_name?: string | null; phone?: string | null; address?: string | null } | null>(
-    null
-  );
+  const [profileDefaults, setProfileDefaults] = useState<{
+    display_name?: string | null;
+    phone?: string | null;
+    address?: string | null;
+    latitude?: number | null;
+    longitude?: number | null;
+  } | null>(null);
   const [notes, setNotes] = useState('');
   const [placing, setPlacing] = useState(false);
   const [placedOrderId, setPlacedOrderId] = useState<string | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cod');
   const [checkoutWallets, setCheckoutWallets] = useState<CheckoutWallet[]>([]);
-  const [creditNote, setCreditNote] = useState('');
-  const [creditDueYmd, setCreditDueYmd] = useState(defaultDueYmd);
-  const [dueDateModalOpen, setDueDateModalOpen] = useState(false);
   const [paymentReference, setPaymentReference] = useState('');
+  const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentProofUri, setPaymentProofUri] = useState<string | null>(null);
   const [proofModalOpen, setProofModalOpen] = useState(false);
   const [proofImageOpen, setProofImageOpen] = useState(false);
-
-  function openPayByDatePicker() {
-    setDueDateModalOpen(true);
-  }
+  const [gcashQrModalOpen, setGcashQrModalOpen] = useState(false);
+  const [gcashQrDownloading, setGcashQrDownloading] = useState(false);
+  const [gcashQrHint, setGcashQrHint] = useState<string | null>(null);
 
   const loadProducts = useCallback(
     async ({ silent }: { silent?: boolean } = {}) => {
@@ -276,7 +242,11 @@ export default function OrderScreen() {
     if (!userId) return;
     let alive = true;
     async function loadProfile() {
-      const { data } = await supabase.from('profiles').select('display_name,phone,address').eq('user_id', userId).maybeSingle();
+      const { data } = await supabase
+        .from('profiles')
+        .select('display_name,phone,address,latitude,longitude')
+        .eq('user_id', userId)
+        .maybeSingle();
       if (!alive) return;
       setProfileDefaults(data ?? null);
       const name = (data?.display_name ?? '').trim();
@@ -305,6 +275,16 @@ export default function OrderScreen() {
   }, [step, profileDefaults]);
 
   useEffect(() => {
+    if (step !== 'checkout' || coords) return;
+    const lat = profileDefaults?.latitude;
+    const lng = profileDefaults?.longitude;
+    if (typeof lat === 'number' && typeof lng === 'number' && Number.isFinite(lat) && Number.isFinite(lng)) {
+      setCoords({ latitude: lat, longitude: lng });
+      setLocationMessage('Using your saved profile location.');
+    }
+  }, [step, profileDefaults, coords]);
+
+  useEffect(() => {
     if (step !== 'checkout' || !sellerId) {
       setCheckoutWallets([]);
       return;
@@ -329,9 +309,8 @@ export default function OrderScreen() {
   }, [step, sellerId]);
 
   useEffect(() => {
-    const allow = new Set<PaymentMethod>(['cod', 'utang']);
+    const allow = new Set<PaymentMethod>(['cod', 'gcash']);
     for (const w of checkoutWallets) {
-      if (w.provider === 'GCash') allow.add('gcash');
       if (w.provider === 'Maya') allow.add('maya');
     }
     setPaymentMethod((prev) => (allow.has(prev) ? prev : 'cod'));
@@ -410,6 +389,20 @@ export default function OrderScreen() {
 
   const gcashWallet = useMemo(() => checkoutWallets.find((w) => w.provider === 'GCash'), [checkoutWallets]);
   const mayaWallet = useMemo(() => checkoutWallets.find((w) => w.provider === 'Maya'), [checkoutWallets]);
+  const gcashQrUrl = useMemo(
+    () => (gcashWallet?.qr_image_path ? publicImageUrl(gcashWallet.qr_image_path) : null),
+    [gcashWallet?.qr_image_path]
+  );
+
+  async function downloadGcashQr() {
+    if (!gcashQrUrl) return;
+    setGcashQrDownloading(true);
+    setGcashQrHint(null);
+    const result = await downloadRemoteImage(gcashQrUrl, 'gcash-qr.jpg');
+    setGcashQrDownloading(false);
+    setGcashQrHint(result.message);
+    if (!result.ok) setErr(result.message);
+  }
 
   const waterProducts = useMemo(
     () => applySort(products.filter((p) => (p.category ?? 'water') === 'water'), sortMode),
@@ -469,9 +462,8 @@ export default function OrderScreen() {
       return;
     }
 
-    const allowedPay = new Set<PaymentMethod>(['cod', 'utang']);
+    const allowedPay = new Set<PaymentMethod>(['cod', 'gcash']);
     for (const w of checkoutWallets) {
-      if (w.provider === 'GCash') allowedPay.add('gcash');
       if (w.provider === 'Maya') allowedPay.add('maya');
     }
     if (!allowedPay.has(paymentMethod)) {
@@ -479,18 +471,19 @@ export default function OrderScreen() {
       return;
     }
 
-    if (paymentMethod === 'utang') {
-      if (!creditNote.trim()) {
-        setErr('Please add a short note for your utang (e.g. when you can pay).');
+    if (paymentMethod === 'gcash') {
+      if (!paymentProofUri) {
+        setErr('Please upload your GCash payment screenshot.');
         return;
       }
-      if (!creditDueYmd) {
-        setErr('Please choose when you plan to pay.');
+      const amount = Number.parseFloat(paymentAmount.replace(/,/g, ''));
+      if (!paymentAmount.trim() || Number.isNaN(amount) || amount <= 0) {
+        setErr('Please enter the amount you paid via GCash.');
         return;
       }
     }
 
-    if (paymentMethod === 'gcash' || paymentMethod === 'maya') {
+    if (paymentMethod === 'maya') {
       if (!paymentReference.trim()) {
         setErr('Please enter your payment reference number.');
         return;
@@ -516,17 +509,22 @@ export default function OrderScreen() {
           customer_name: customerName.trim(),
           delivery_address: deliveryAddress.trim(),
           contact_number: contactNumber.trim(),
-          latitude: coords?.latitude ?? null,
-          longitude: coords?.longitude ?? null,
+          latitude: coords?.latitude ?? profileDefaults?.latitude ?? null,
+          longitude: coords?.longitude ?? profileDefaults?.longitude ?? null,
           delivery_fee: deliveryFee,
           delivery_distance_meters: deliveryQuote.distanceMeters,
           notes: notes.trim() ? notes.trim() : null,
           status: 'pending',
           payment_method: paymentMethod,
-          payment_due_date: paymentMethod === 'utang' ? creditDueYmd : null,
-          credit_note: paymentMethod === 'utang' ? creditNote.trim() : null,
+          payment_due_date: null,
+          credit_note: null,
           payment_settled: false,
-          payment_reference: paymentMethod === 'gcash' || paymentMethod === 'maya' ? paymentReference.trim() : null,
+          payment_reference:
+            paymentMethod === 'gcash'
+              ? paymentAmount.trim()
+              : paymentMethod === 'maya'
+                ? paymentReference.trim()
+                : null,
           payment_proof_path: paymentMethod === 'gcash' || paymentMethod === 'maya' ? proofPath : null,
         })
         .select('id')
@@ -561,9 +559,8 @@ export default function OrderScreen() {
       setCoords(null);
       setLocationMessage(null);
       setNotes('');
-      setCreditNote('');
-      setCreditDueYmd(defaultDueYmd());
       setPaymentReference('');
+      setPaymentAmount('');
       setPaymentProofUri(null);
       setPlacedOrderId(order.id);
       setStep('menu');
@@ -609,7 +606,8 @@ export default function OrderScreen() {
     router.push('/(tabs)/profile/orders');
   }
 
-  const scrollBottomPad = step === 'menu' && cart.length > 0 ? 120 : theme.spacing.xl;
+  const scrollBottomPad =
+    step === 'menu' && cart.length > 0 ? 120 : step === 'checkout' ? 80 : theme.spacing.xl;
 
   return (
     <Screen style={{ padding: 0 }}>
@@ -743,22 +741,63 @@ export default function OrderScreen() {
         </Pressable>
       </Modal>
 
-      <CalendarPickerModal
-        visible={dueDateModalOpen}
-        selectedDate={(() => {
-          const min = startOfToday();
-          const cur = parseYmdToDate(creditDueYmd);
-          return cur < min ? min : cur;
-        })()}
-        minDate={startOfToday()}
-        onClose={() => setDueDateModalOpen(false)}
-        onSelectDate={(d) => {
-          const min = startOfToday();
-          const picked = d < min ? min : d;
-          setErr(null);
-          setCreditDueYmd(formatYmd(picked));
-        }}
-      />
+      <Modal visible={gcashQrModalOpen} transparent animationType="fade" onRequestClose={() => setGcashQrModalOpen(false)}>
+        <Pressable
+          onPress={() => setGcashQrModalOpen(false)}
+          style={{ flex: 1, backgroundColor: 'rgba(11,27,58,0.55)', justifyContent: 'center', padding: theme.spacing.md }}
+        >
+          <Pressable onPress={() => {}} style={{ width: '100%', maxWidth: 420, alignSelf: 'center' }}>
+            <View
+              style={{
+                borderRadius: 18,
+                backgroundColor: '#FFFFFF',
+                borderWidth: 1,
+                borderColor: theme.colors.border,
+                padding: 12,
+                ...CARD_RAISE,
+              }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                <Text weight="extrabold" style={{ fontSize: 16, flex: 1 }}>
+                  GCash QR code
+                </Text>
+                <Pressable onPress={() => setGcashQrModalOpen(false)} hitSlop={12}>
+                  <Ionicons name="close" size={22} color={theme.colors.muted} />
+                </Pressable>
+              </View>
+              {gcashQrUrl ? (
+                <Image
+                  source={{ uri: gcashQrUrl }}
+                  style={{
+                    marginTop: 10,
+                    width: '100%',
+                    height: 360,
+                    borderRadius: 14,
+                    backgroundColor: '#fff',
+                    borderWidth: 1,
+                    borderColor: theme.colors.border,
+                  }}
+                  resizeMode="contain"
+                />
+              ) : null}
+              {gcashQrHint ? (
+                <Text variant="muted" style={{ marginTop: 10, fontSize: 12, lineHeight: 17, textAlign: 'center' }}>
+                  {gcashQrHint}
+                </Text>
+              ) : null}
+              <View style={{ marginTop: 12, gap: 8 }}>
+                <Button
+                  title={gcashQrDownloading ? 'Saving…' : 'Download QR code'}
+                  leadingIcon={<Ionicons name="download-outline" size={20} color={theme.colors.onPrimary} />}
+                  disabled={!gcashQrUrl || gcashQrDownloading}
+                  onPress={() => void downloadGcashQr()}
+                />
+                <Button variant="ghost" title="Close" onPress={() => setGcashQrModalOpen(false)} />
+              </View>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       <Modal visible={sortModalOpen} transparent animationType="fade" onRequestClose={() => setSortModalOpen(false)}>
         <Pressable
@@ -1253,7 +1292,7 @@ export default function OrderScreen() {
                       Payment method
                     </Text>
                     <Text variant="muted" style={{ marginTop: 4, fontSize: 13 }}>
-                      COD and Utang are always available. GCash and Maya show only if the seller enabled them.
+                      Pay with COD or GCash (upload payment screenshot and amount). Maya shows if the seller enabled it.
                     </Text>
                     <View style={{ marginTop: 12, gap: 10 }}>
                       <CheckoutPaymentOption
@@ -1262,18 +1301,16 @@ export default function OrderScreen() {
                         selected={paymentMethod === 'cod'}
                         onPress={() => setPaymentMethod('cod')}
                       />
-                      {gcashWallet ? (
-                        <CheckoutPaymentOption
-                          label="GCash"
-                          description={
-                            gcashWallet.account_name
-                              ? `Account: ${gcashWallet.account_name}`
-                              : 'Pay using GCash'
-                          }
-                          selected={paymentMethod === 'gcash'}
-                          onPress={() => setPaymentMethod('gcash')}
-                        />
-                      ) : null}
+                      <CheckoutPaymentOption
+                        label="GCash"
+                        description={
+                          gcashWallet?.account_name
+                            ? `Account: ${gcashWallet.account_name}`
+                            : 'Pay via GCash — upload screenshot and amount'
+                        }
+                        selected={paymentMethod === 'gcash'}
+                        onPress={() => setPaymentMethod('gcash')}
+                      />
                       {mayaWallet ? (
                         <CheckoutPaymentOption
                           label="Maya"
@@ -1286,50 +1323,9 @@ export default function OrderScreen() {
                           onPress={() => setPaymentMethod('maya')}
                         />
                       ) : null}
-                      <CheckoutPaymentOption
-                        label="Utang"
-                        description="Pay later — seller will see your promised date and note"
-                        selected={paymentMethod === 'utang'}
-                        onPress={() => setPaymentMethod('utang')}
-                      />
                     </View>
 
-                    {paymentMethod === 'utang' ? (
-                      <View style={{ marginTop: 12, gap: 10 }}>
-                        <TextField
-                          label="Utang note (required)"
-                          value={creditNote}
-                          onChangeText={setCreditNote}
-                          placeholder="E.g. Babayaran sa sweldo, May 15"
-                          multiline
-                          numberOfLines={3}
-                        />
-                        <View>
-                          <Text variant="muted" weight="bold" style={{ marginBottom: 6, fontSize: 12 }}>
-                            Pay by (date)
-                          </Text>
-                          <Pressable
-                            onPress={openPayByDatePicker}
-                            style={{
-                              paddingVertical: 14,
-                              paddingHorizontal: 14,
-                              borderRadius: 14,
-                              borderWidth: 1,
-                              borderColor: theme.colors.border,
-                              backgroundColor: '#fff',
-                              flexDirection: 'row',
-                              alignItems: 'center',
-                              justifyContent: 'space-between',
-                            }}
-                          >
-                            <Text weight="extrabold">{formatDueDateLabel(creditDueYmd)}</Text>
-                            <Ionicons name="calendar-outline" size={22} color={ORDER_BLUE} />
-                          </Pressable>
-                        </View>
-                      </View>
-                    ) : null}
-
-                    {paymentMethod === 'gcash' && gcashWallet ? (
+                    {paymentMethod === 'gcash' ? (
                       <View
                         style={{
                           marginTop: 12,
@@ -1340,55 +1336,90 @@ export default function OrderScreen() {
                           borderColor: 'rgba(0,86,210,0.22)',
                         }}
                       >
-                        <Text weight="extrabold">GCash payment details</Text>
-                        {gcashWallet.qr_image_path && publicImageUrl(gcashWallet.qr_image_path) ? (
-                          <View style={{ alignItems: 'center', marginTop: 10 }}>
-                            <Image
-                              source={{ uri: publicImageUrl(gcashWallet.qr_image_path)! }}
-                              style={{
-                                width: paymentQrDisplaySize,
-                                height: paymentQrDisplaySize,
-                                borderRadius: 12,
-                                backgroundColor: '#fff',
-                                borderWidth: 1,
-                                borderColor: 'rgba(0,86,210,0.18)',
-                              }}
-                              resizeMode="contain"
-                            />
-                          </View>
-                        ) : null}
-                        <View style={{ marginTop: 12, gap: 6 }}>
-                          {gcashWallet.account_name ? (
-                            <Text weight="extrabold" style={{ fontSize: 15 }}>
-                              Acc name: <Text style={{ fontSize: 15 }}>{gcashWallet.account_name}</Text>
-                            </Text>
-                          ) : null}
-                          {gcashWallet.account_number ? (
-                            <Text weight="extrabold" style={{ fontSize: 15 }}>
-                              Acc no.: <Text style={{ fontSize: 15 }}>{gcashWallet.account_number}</Text>
-                            </Text>
-                          ) : null}
-                        </View>
+                        <Text weight="extrabold">GCash payment</Text>
+                        <Text variant="muted" style={{ marginTop: 6, fontSize: 13, lineHeight: 18 }}>
+                          Send payment via GCash, then upload your screenshot and enter the amount paid.
+                        </Text>
+                        {gcashWallet ? (
+                          <>
+                            {gcashQrUrl ? (
+                              <View style={{ alignItems: 'center', marginTop: 10 }}>
+                                <Pressable
+                                  onPress={() => {
+                                    setGcashQrHint(null);
+                                    setGcashQrModalOpen(true);
+                                  }}
+                                  style={({ pressed }) => ({
+                                    opacity: pressed ? 0.92 : 1,
+                                    position: 'relative',
+                                  })}
+                                >
+                                  <Image
+                                    source={{ uri: gcashQrUrl }}
+                                    style={{
+                                      width: paymentQrDisplaySize,
+                                      height: paymentQrDisplaySize,
+                                      borderRadius: 12,
+                                      backgroundColor: '#fff',
+                                      borderWidth: 1,
+                                      borderColor: 'rgba(0,86,210,0.18)',
+                                    }}
+                                    resizeMode="contain"
+                                  />
+                                  <View
+                                    style={{
+                                      position: 'absolute',
+                                      right: 8,
+                                      bottom: 8,
+                                      width: 28,
+                                      height: 28,
+                                      borderRadius: 14,
+                                      backgroundColor: ORDER_BLUE,
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      borderWidth: 2,
+                                      borderColor: '#FFFFFF',
+                                    }}
+                                  >
+                                    <Ionicons name="expand-outline" size={14} color="#fff" />
+                                  </View>
+                                </Pressable>
+                                <Text variant="muted" style={{ marginTop: 8, fontSize: 12, textAlign: 'center' }}>
+                                  Tap QR to view full size or download
+                                </Text>
+                              </View>
+                            ) : null}
+                            <View style={{ marginTop: 12, gap: 6 }}>
+                              {gcashWallet.account_name ? (
+                                <Text weight="extrabold" style={{ fontSize: 15 }}>
+                                  Acc name: <Text style={{ fontSize: 15 }}>{gcashWallet.account_name}</Text>
+                                </Text>
+                              ) : null}
+                              {gcashWallet.account_number ? (
+                                <Text weight="extrabold" style={{ fontSize: 15 }}>
+                                  Acc no.: <Text style={{ fontSize: 15 }}>{gcashWallet.account_number}</Text>
+                                </Text>
+                              ) : null}
+                            </View>
+                          </>
+                        ) : (
+                          <Text variant="muted" style={{ marginTop: 10, fontSize: 12, lineHeight: 17 }}>
+                            Seller GCash QR is not set up yet — pay using the store&apos;s GCash number if you have it.
+                          </Text>
+                        )}
 
                         <View style={{ marginTop: 12, gap: 10 }}>
-                          <TextField
-                            label="Reference no. (required)"
-                            value={paymentReference}
-                            onChangeText={setPaymentReference}
-                            placeholder="Enter the reference number from GCash"
-                            autoCapitalize="none"
-                          />
                           <View style={{ gap: 10 }}>
                             <Button
                               variant="ghost"
-                              title={paymentProofUri ? 'Change payment proof' : 'Upload payment proof'}
+                              title={paymentProofUri ? 'Change screenshot' : 'Upload screenshot'}
                               leadingIcon={<Ionicons name="cloud-upload-outline" size={20} color={theme.colors.text} />}
                               onPress={() => void pickPaymentProof()}
                               disabled={placing}
                             />
                             {!paymentProofUri ? (
                               <Text variant="muted" style={{ marginTop: -2, fontSize: 11 }}>
-                                Required
+                                Required — upload your GCash payment screenshot
                               </Text>
                             ) : null}
                             {paymentProofUri ? (
@@ -1451,36 +1482,9 @@ export default function OrderScreen() {
                                     }}
                                   >
                                     <Text variant="chip" weight="extrabold" style={{ color: ORDER_BLUE }}>
-                                      {paymentMethod === 'gcash' ? 'GCash' : 'Maya'}
+                                      GCash
                                     </Text>
                                   </View>
-
-                                  {paymentReference ? (
-                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 }}>
-                                      <Text variant="muted" style={{ flex: 1 }} numberOfLines={1}>
-                                        Reference Number:{' '}
-                                        <Text weight="extrabold" style={{ color: theme.colors.text }}>
-                                          {paymentReference}
-                                        </Text>
-                                      </Text>
-                                      <View
-                                        style={{
-                                          width: 30,
-                                          height: 30,
-                                          borderRadius: 12,
-                                          borderWidth: 1,
-                                          borderColor: theme.colors.border,
-                                          backgroundColor: '#FFFFFF',
-                                          alignItems: 'center',
-                                          justifyContent: 'center',
-                                        }}
-                                      >
-                                        <Ionicons name="copy-outline" size={16} color={ORDER_BLUE} />
-                                      </View>
-                                    </View>
-                                  ) : null}
-
-                                  <View style={{ height: 1, backgroundColor: theme.colors.border, marginTop: 10, opacity: 0.8 }} />
 
                                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10 }}>
                                     <Ionicons name="shield-checkmark-outline" size={16} color={ORDER_BLUE} />
@@ -1492,6 +1496,13 @@ export default function OrderScreen() {
                               </View>
                             ) : null}
                           </View>
+                          <TextField
+                            label="Amount paid (required)"
+                            value={paymentAmount}
+                            onChangeText={setPaymentAmount}
+                            placeholder="0.00"
+                            keyboardType="decimal-pad"
+                          />
                         </View>
                       </View>
                     ) : null}

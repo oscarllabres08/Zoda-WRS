@@ -15,7 +15,8 @@ import * as Location from 'expo-location';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 
-import { formatDistanceKm, haversineKm } from '../../lib/geo';
+import { haversineKm } from '../../lib/geo';
+import { getOrderDistanceDisplay } from '../../lib/orderDistance';
 import { publicWrsAssetUrl } from '../../lib/publicAssetUrl';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../providers/AuthProvider';
@@ -54,6 +55,7 @@ type OrderRow = {
   created_at: string;
   payment_method?: string | null;
   payment_settled?: boolean | null;
+  delivery_distance_meters?: number | null;
   order_items?: OrderItemPreview[];
 };
 
@@ -94,7 +96,7 @@ export default function OrdersScreen() {
   const [storeCoords, setStoreCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [locationRefreshing, setLocationRefreshing] = useState(false);
   const [avatarPathByCustomerId, setAvatarPathByCustomerId] = useState<Record<string, string | null>>({});
-  const { seedIfNeeded, markViewed, isNewOrder } = useViewedOrders(businessId);
+  const { seedIfNeeded, markViewed, isNewOrder, viewedOrderIds } = useViewedOrders(businessId);
 
   const load = useCallback(async () => {
     if (!user || !businessId) return;
@@ -103,7 +105,7 @@ export default function OrdersScreen() {
     const { data, error: err } = await supabase
       .from('orders')
       .select(
-        'id,customer_id,customer_name,contact_number,delivery_address,landmark,latitude,longitude,notes,status,created_at,payment_method,payment_settled,order_items(id,product_name,quantity,unit_price,product_id,products(image_url))'
+        'id,customer_id,customer_name,contact_number,delivery_address,landmark,latitude,longitude,notes,status,created_at,payment_method,payment_settled,delivery_distance_meters,order_items(id,product_name,quantity,unit_price,product_id,products(image_url))'
       )
       .eq('seller_id', businessId)
       .order('created_at', { ascending: false });
@@ -230,6 +232,10 @@ export default function OrdersScreen() {
     () => orders.filter((o) => o.status !== 'delivered' && o.status !== 'cancelled'),
     [orders]
   );
+  const newOrderCount = useMemo(
+    () => activeOrders.filter((o) => !viewedOrderIds.has(o.id)).length,
+    [activeOrders, viewedOrderIds]
+  );
   const filteredActive = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return activeOrders;
@@ -252,10 +258,7 @@ export default function OrdersScreen() {
     if (!referencePoint) return map;
     for (const o of filteredActive) {
       if (o.latitude != null && o.longitude != null) {
-        map.set(
-          o.id,
-          haversineKm(referencePoint.lat, referencePoint.lng, o.latitude, o.longitude)
-        );
+        map.set(o.id, haversineKm(referencePoint.lat, referencePoint.lng, o.latitude, o.longitude));
       }
     }
     return map;
@@ -415,6 +418,23 @@ export default function OrdersScreen() {
                 >
                   Newest
                 </Text>
+                {newOrderCount > 0 ? (
+                  <View
+                    style={{
+                      minWidth: 18,
+                      height: 18,
+                      borderRadius: 999,
+                      backgroundColor: theme.colors.danger,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      paddingHorizontal: 4,
+                    }}
+                  >
+                    <Text weight="extrabold" style={{ color: '#FFFFFF', fontSize: 10, lineHeight: 12 }}>
+                      {newOrderCount > 99 ? '99+' : newOrderCount}
+                    </Text>
+                  </View>
+                ) : null}
               </Pressable>
               <Pressable
                 onPress={() => void refreshDeviceLocation()}
@@ -474,7 +494,7 @@ export default function OrdersScreen() {
 
             {!referencePoint ? (
               <Text variant="muted" weight="semibold" style={{ fontSize: 12, paddingHorizontal: 2 }}>
-                Turn on location (or set store GPS in Business Profile) to show distance on each order.
+                Turn on location or set store GPS in Business Profile. Saved checkout distance still shows when the customer shared their location.
               </Text>
             ) : null}
 
@@ -496,12 +516,12 @@ export default function OrdersScreen() {
               }}
             >
               {sortedActive.map((item, index) => {
-                const km = distanceByOrderId.get(item.id);
-                const hasPin = item.latitude != null && item.longitude != null;
+                const ref = referencePoint ? { lat: referencePoint.lat, lng: referencePoint.lng } : null;
+                const distanceDisplay = getOrderDistanceDisplay(item, ref);
                 const distanceText =
-                  referencePoint && hasPin && km != null
-                    ? formatDistanceKm(km)
-                    : referencePoint
+                  distanceDisplay.kind === 'distance'
+                    ? distanceDisplay.label
+                    : distanceDisplay.kind === 'no-pin'
                       ? 'No map pin'
                       : null;
                 return (

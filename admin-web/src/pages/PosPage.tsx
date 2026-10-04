@@ -38,9 +38,9 @@ const POS_CATEGORIES: { id: PosCategory; label: string; icon?: string }[] = [
   { id: 'others', label: 'Others', icon: '📦' },
 ];
 
-const POS_PAYMENT_METHODS: { id: PosPaymentMethod; label: string }[] = [
-  { id: 'cash', label: 'Cash' },
-  { id: 'gcash', label: 'GCash' },
+const POS_PAYMENT_METHODS: { id: PosPaymentMethod; label: string; icon: 'cash' | 'gcash' }[] = [
+  { id: 'cash', label: 'Cash', icon: 'cash' },
+  { id: 'gcash', label: 'GCash', icon: 'gcash' },
 ];
 
 export function PosPage() {
@@ -170,6 +170,11 @@ export function PosPage() {
 
   async function submitSale(paymentSettled: boolean) {
     if (!businessId || cart.length === 0) return;
+
+    if (!paymentSettled && !customerName.trim()) {
+      setError('Customer name is required for unpaid orders.');
+      return;
+    }
 
     if (paymentSettled && paymentMethod === 'cash') {
       if (!Number.isFinite(cashNum) || cashNum < cartTotal) {
@@ -315,28 +320,29 @@ export function PosPage() {
         </section>
 
         <aside className="pos-cart card card-flat">
-          <div className="pos-cart-head">
-            <h2>
-              <CartIcon /> Cart ({cartCount} {cartCount === 1 ? 'item' : 'items'})
-            </h2>
-            <button type="button" className="pos-link-danger" disabled={cart.length === 0} onClick={clearCart}>
-              Clear Cart
-            </button>
-          </div>
+          <div className="pos-cart-scroll">
+            <div className="pos-cart-head">
+              <h2>
+                <CartIcon /> Cart ({cartCount} {cartCount === 1 ? 'item' : 'items'})
+              </h2>
+              <button type="button" className="pos-link-danger" disabled={cart.length === 0} onClick={clearCart}>
+                Clear Cart
+              </button>
+            </div>
 
-          <label className="field pos-customer-field">
-            <span className="pos-cash-label">Customer name (optional)</span>
-            <input
-              type="text"
-              placeholder="e.g. Juan Dela Cruz"
-              value={customerName}
-              onChange={(e) => setCustomerName(e.target.value)}
-              autoComplete="name"
-            />
-            <p className="field-hint">Saved sales with a name appear in Customer list.</p>
-          </label>
+            <label className="field pos-customer-field">
+              <span className="pos-cash-label">Customer name</span>
+              <input
+                type="text"
+                placeholder="e.g. Juan Dela Cruz"
+                value={customerName}
+                onChange={(e) => setCustomerName(e.target.value)}
+                autoComplete="name"
+              />
+              <p className="field-hint">Required for unpaid orders. Saved names appear in Customer list.</p>
+            </label>
 
-          <div className="pos-cart-lines">
+            <div className="pos-cart-lines">
             {cart.length === 0 ? (
               <p className="muted-block">Tap + on a product to add it here.</p>
             ) : (
@@ -368,9 +374,9 @@ export function PosPage() {
                 );
               })
             )}
-          </div>
+            </div>
 
-          <div className="pos-checkout-section">
+            <div className="pos-checkout-section">
             <h3 className="pos-checkout-heading">Product summary</h3>
             <div className="pos-totals">
               <div className="pos-total-row">
@@ -398,6 +404,7 @@ export function PosPage() {
                       if (m.id === 'gcash') setCashReceived('');
                     }}
                   >
+                    {m.icon === 'cash' ? <CashIcon /> : <GcashIcon />}
                     {m.label}
                   </button>
                 ))}
@@ -427,27 +434,30 @@ export function PosPage() {
             ) : (
               <p className="muted-block pos-gcash-hint">GCash payment — mark paid when reference is confirmed.</p>
             )}
+            </div>
           </div>
 
-          <button
-            type="button"
-            className="btn btn-primary btn-block pos-complete-btn"
-            disabled={cart.length === 0 || submitting}
-            onClick={() => void submitSale(true)}
-          >
-            <CheckIcon /> {submitting ? 'Saving…' : 'Complete paid order'}
-          </button>
-          <button
-            type="button"
-            className="btn btn-block pos-unpaid-btn"
-            disabled={cart.length === 0 || submitting}
-            onClick={() => void submitSale(false)}
-          >
-            Complete as unpaid order
-          </button>
-          <button type="button" className="btn btn-ghost btn-block" disabled={cart.length === 0} onClick={clearCart}>
-            <TrashIcon /> Clear Cart
-          </button>
+          <div className="pos-cart-actions">
+            <button
+              type="button"
+              className="btn btn-primary btn-block pos-complete-btn"
+              disabled={cart.length === 0 || submitting}
+              onClick={() => void submitSale(true)}
+            >
+              <CheckIcon /> {submitting ? 'Saving…' : 'Complete paid order'}
+            </button>
+            <button
+              type="button"
+              className="btn btn-block pos-unpaid-btn"
+              disabled={cart.length === 0 || submitting}
+              onClick={() => void submitSale(false)}
+            >
+              Complete as unpaid order
+            </button>
+            <button type="button" className="btn btn-ghost btn-block" disabled={cart.length === 0} onClick={clearCart}>
+              <TrashIcon /> Clear Cart
+            </button>
+          </div>
         </aside>
       </div>
     </div>
@@ -506,6 +516,16 @@ function CashIcon() {
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
       <rect x="3" y="6" width="18" height="12" rx="2" stroke="currentColor" strokeWidth="1.8" />
       <circle cx="12" cy="12" r="2.5" stroke="currentColor" strokeWidth="1.8" />
+    </svg>
+  );
+}
+
+function GcashIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <rect x="5" y="2" width="14" height="20" rx="3" stroke="currentColor" strokeWidth="1.8" />
+      <circle cx="12" cy="18" r="1.2" fill="currentColor" />
+      <path d="M9 7h6M9 10h4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
     </svg>
   );
 }

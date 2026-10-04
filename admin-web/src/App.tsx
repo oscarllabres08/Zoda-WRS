@@ -17,6 +17,7 @@ import { LaundryPosPage } from './pages/LaundryPosPage';
 import { LaundrySalesPage } from './pages/LaundrySalesPage';
 import { LaundryServicesPage } from './pages/LaundryServicesPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { EwalletPage } from './pages/EwalletPage';
 
 function ProtectedAdmin() {
   const { user, loading, profileLoading, isStoreOwner } = useAuth();
@@ -50,6 +51,7 @@ export default function App() {
         <Route path="analytics" element={<Navigate to="/sales" replace />} />
         <Route path="customers" element={<CustomersPage />} />
         <Route path="expenses" element={<ExpensesPage />} />
+        <Route path="ewallet" element={<EwalletPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="laundry">
           <Route index element={<Navigate to="/laundry/dashboard" replace />} />

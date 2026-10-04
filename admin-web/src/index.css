@@ -2202,6 +2202,24 @@ table.data-table th {
   display: flex;
   flex-direction: column;
   max-height: calc(100vh - 48px);
+  overflow: hidden;
+}
+
+.pos-cart-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  padding-right: 2px;
+}
+
+.pos-cart-actions {
+  flex-shrink: 0;
+  padding-top: 10px;
+  margin-top: 4px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
 }
 
 .pos-cart-head {
@@ -2239,8 +2257,6 @@ table.data-table th {
 }
 
 .pos-cart-lines {
-  flex: 1;
-  overflow: auto;
   min-height: 80px;
   margin-bottom: 12px;
   display: flex;
@@ -2402,8 +2418,12 @@ table.data-table th {
   margin-bottom: 8px;
 }
 
+.pos-cart-actions .btn-block:last-child {
+  margin-bottom: 0;
+}
+
 .pos-complete-btn {
-  margin-top: 4px;
+  margin-top: 0;
   background: linear-gradient(135deg, var(--toggle-on), var(--toggle-on-deep));
   box-shadow: 0 8px 20px rgba(46, 204, 113, 0.3);
   border: 1px solid rgba(46, 204, 113, 0.35);
@@ -2416,7 +2436,7 @@ table.data-table th {
 }
 
 .pos-unpaid-btn {
-  margin-top: 8px;
+  margin-top: 0;
   background: rgba(234, 88, 12, 0.12);
   border: 1.5px solid rgba(234, 88, 12, 0.45);
   color: #c2410c;
@@ -3867,6 +3887,10 @@ table.data-table th {
   min-width: 0;
 }
 
+.sales-lower-grid--recent-only {
+  grid-template-columns: 1fr;
+}
+
 .sales-lower-grid > .card {
   min-width: 0;
 }
@@ -3924,7 +3948,6 @@ table.data-table th {
   border-radius: 999px;
   font-size: 11px;
   font-weight: 800;
-  text-transform: capitalize;
 }
 
 .sales-pill.online {
@@ -3937,9 +3960,69 @@ table.data-table th {
   color: #1a7a42;
 }
 
+.sales-pill.gcash {
+  background: rgba(0, 87, 184, 0.12);
+  color: #0057b8;
+}
+
+.sales-pill.cash {
+  background: rgba(46, 204, 113, 0.15);
+  color: #1a7a42;
+}
+
+.sales-pill.neutral {
+  background: rgba(106, 122, 149, 0.14);
+  color: var(--muted);
+}
+
 .sales-pill.paid {
   background: rgba(46, 204, 113, 0.15);
   color: #1a7a42;
+}
+
+.sales-recent-table tbody tr.sales-row-clickable {
+  cursor: pointer;
+}
+
+.sales-recent-table tbody tr.sales-row-clickable:hover td,
+.sales-recent-table tbody tr.sales-row-clickable:focus-visible td {
+  background: var(--panel-soft);
+}
+
+.sales-recent-table tbody tr.sales-row-clickable:focus-visible {
+  outline: 2px solid rgba(18, 101, 214, 0.45);
+  outline-offset: -2px;
+}
+
+.sales-sale-detail-modal {
+  max-width: 420px;
+  width: min(420px, 100%);
+}
+
+.sales-sale-detail-list {
+  margin: 0;
+  display: grid;
+  gap: 12px;
+}
+
+.sales-sale-detail-list > div {
+  display: grid;
+  gap: 4px;
+}
+
+.sales-sale-detail-list dt {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.sales-sale-detail-list dd {
+  margin: 0;
+  font-weight: 700;
+  color: var(--wrs-navy);
 }
 
 .sales-pill.unpaid {
@@ -3949,6 +4032,52 @@ table.data-table th {
 
 .sales-recent-table {
   font-size: 13px;
+  width: 100%;
+  table-layout: fixed;
+}
+
+.sales-recent-table th,
+.sales-recent-table td {
+  padding: 11px 16px;
+  vertical-align: middle;
+}
+
+.sales-recent-table .sales-col-customer {
+  width: 16%;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sales-recent-table .sales-col-datetime {
+  width: 14%;
+  white-space: nowrap;
+}
+
+.sales-recent-table .sales-col-product {
+  width: 24%;
+  white-space: normal;
+  word-break: break-word;
+  line-height: 1.35;
+}
+
+.sales-recent-table .sales-col-type {
+  width: 11%;
+}
+
+.sales-recent-table .sales-col-payment {
+  width: 12%;
+}
+
+.sales-recent-table .sales-col-amount {
+  width: 11%;
+  white-space: nowrap;
+  font-weight: 800;
+}
+
+.sales-recent-table .sales-col-status {
+  width: 12%;
 }
 
 .sales-top-table {
@@ -3977,7 +4106,8 @@ table.data-table th {
 }
 
 .sales-table-scroll .sales-recent-table {
-  min-width: 580px;
+  min-width: 860px;
+  width: 100%;
 }
 
 .sales-table-scroll .sales-top-table {
@@ -3986,6 +4116,76 @@ table.data-table th {
 
 .sales-export-details {
   margin-top: 0;
+}
+
+.ewallet-page-card {
+  max-width: 560px;
+}
+
+.ewallet-provider-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.ewallet-provider-badge {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #007dff, #0057c2);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 900;
+  flex-shrink: 0;
+}
+
+.ewallet-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.ewallet-success-backdrop {
+  z-index: 200;
+}
+
+.ewallet-success-modal {
+  max-width: 400px;
+  text-align: center;
+  padding: 28px 24px 24px;
+}
+
+.ewallet-success-icon {
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 14px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: rgba(46, 204, 113, 0.15);
+  border: 2px solid rgba(46, 204, 113, 0.45);
+  color: #1a7a42;
+  font-size: 28px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.ewallet-success-title {
+  margin: 0 0 10px;
+  font-size: 20px;
+  font-weight: 900;
+  color: var(--wrs-navy);
+}
+
+.ewallet-success-body {
+  margin: 0 0 20px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--muted);
+  line-height: 1.5;
 }
 
 .sales-export-details > summary {
@@ -4243,7 +4443,7 @@ table.data-table th {
   }
 
   .sales-table-scroll .sales-recent-table {
-    min-width: 540px;
+    min-width: 780px;
   }
 
   .sales-table-scroll .sales-top-table {
@@ -4256,7 +4456,11 @@ table.data-table th {
 
   .sales-recent-table th,
   .sales-recent-table td {
-    padding: 8px 8px;
+    padding: 10px 12px;
+  }
+
+  .sales-recent-table .sales-col-datetime,
+  .sales-recent-table .sales-col-amount {
     white-space: nowrap;
   }
 
@@ -4315,7 +4519,8 @@ table.data-table th {
 
 .admin-notifications-backdrop,
 .admin-notifications-fixed .admin-notifications,
-.admin-notifications-fixed .admin-notification-popup {
+.admin-notifications-fixed .admin-notification-popup,
+.admin-notification-detail-backdrop {
   pointer-events: auto;
 }
 
@@ -4610,7 +4815,7 @@ table.data-table th {
 }
 
 .admin-notification-detail-backdrop {
-  z-index: 110;
+  z-index: 200;
 }
 
 .admin-notification-detail-modal {

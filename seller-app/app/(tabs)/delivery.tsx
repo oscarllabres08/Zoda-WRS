@@ -6,7 +6,8 @@ import * as Location from 'expo-location';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 
-import { formatDistanceKm, haversineKm } from '../../lib/geo';
+import { haversineKm } from '../../lib/geo';
+import { formatOrderDistance, orderDistanceKm } from '../../lib/orderDistance';
 import { publicWrsAssetUrl } from '../../lib/publicAssetUrl';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../providers/AuthProvider';
@@ -39,6 +40,7 @@ type OrderRow = {
   payment_method?: string | null;
   payment_settled?: boolean | null;
   delivery_fee?: number | null;
+  delivery_distance_meters?: number | null;
   order_items?: OrderItemPreview[];
 };
 
@@ -90,6 +92,7 @@ export default function DeliveryScreen() {
   const [payFilter, setPayFilter] = useState<PayFilter>('all');
   const [deliveredPage, setDeliveredPage] = useState(0);
   const [deviceCoords, setDeviceCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [storeCoords, setStoreCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [avatarPathByCustomerId, setAvatarPathByCustomerId] = useState<Record<string, string | null>>({});
   const { seedIfNeeded, markViewed, isNewOrder } = useViewedOrders(businessId);
 
@@ -108,7 +111,7 @@ export default function DeliveryScreen() {
     const { data, error: err } = await supabase
       .from('orders')
       .select(
-        'id,customer_id,customer_name,contact_number,delivery_address,landmark,status,latitude,longitude,created_at,payment_method,payment_settled,delivery_fee,order_items(product_name,unit_price,quantity)'
+        'id,customer_id,customer_name,contact_number,delivery_address,landmark,status,latitude,longitude,created_at,payment_method,payment_settled,delivery_fee,delivery_distance_meters,order_items(product_name,unit_price,quantity)'
       )
       .eq('seller_id', businessId)
       .neq('status', 'cancelled')
@@ -149,18 +152,53 @@ export default function DeliveryScreen() {
   }, [businessId, load]);
 
   useEffect(() => {
-    let sub: Location.LocationSubscription | null = null;
-    (async () => {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') return;
-      sub = await Location.watchPositionAsync({ accuracy: Location.Accuracy.Balanced, distanceInterval: 80 }, (pos) => {
-        setDeviceCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-      });
+    if (!businessId) return;
+    let cancelled = false;
+    void (async () => {
+      const { data } = await supabase
+        .from('profiles')
+        .select('latitude,longitude')
+        .eq('user_id', businessId)
+        .maybeSingle();
+      if (cancelled) return;
+      const lat = (data as { latitude?: number | null })?.latitude;
+      const lng = (data as { longitude?: number | null })?.longitude;
+      if (typeof lat === 'number' && typeof lng === 'number' && Number.isFinite(lat) && Number.isFinite(lng)) {
+        setStoreCoords({ lat, lng });
+      } else {
+        setStoreCoords(null);
+      }
     })();
     return () => {
+      cancelled = true;
+    };
+  }, [businessId]);
+
+  useEffect(() => {
+    let sub: Location.LocationSubscription | null = null;
+    let cancelled = false;
+    (async () => {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (cancelled || status !== 'granted') return;
+      try {
+        const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        if (!cancelled) {
+          setDeviceCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        }
+        sub = await Location.watchPositionAsync({ accuracy: Location.Accuracy.Balanced, distanceInterval: 80 }, (pos) => {
+          setDeviceCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        });
+      } catch {
+        /* store fallback */
+      }
+    })();
+    return () => {
+      cancelled = true;
       sub?.remove();
     };
   }, []);
+
+  const distanceReference = deviceCoords ?? storeCoords;
 
   const counts = useMemo(
     () => ({
@@ -392,7 +430,7 @@ export default function DeliveryScreen() {
               <ActiveDeliveryCard
                 order={order}
                 isNew={isNewOrder(order.id)}
-                deviceCoords={deviceCoords}
+                distanceReference={distanceReference}
                 onOpen={() => openOrder(order.id)}
               />
             </Animated.View>
@@ -601,19 +639,17 @@ function DeliveredOrderRow({
 function ActiveDeliveryCard({
   order,
   isNew = false,
-  deviceCoords,
+  distanceReference,
   onOpen,
 }: {
   order: OrderRow;
   isNew?: boolean;
-  deviceCoords: { lat: number; lng: number } | null;
+  distanceReference: { lat: number; lng: number } | null;
   onOpen: () => void;
 }) {
   const p = theme.colors.primary;
-  const km =
-    deviceCoords && order.latitude != null && order.longitude != null
-      ? haversineKm(deviceCoords.lat, deviceCoords.lng, order.latitude, order.longitude)
-      : null;
+  const km = orderDistanceKm(order, distanceReference);
+  const distanceLabel = formatOrderDistance(km);
   const statusLabel = order.status.replaceAll('_', ' ');
 
   return (
@@ -650,7 +686,7 @@ function ActiveDeliveryCard({
             </Text>
             <Text variant="chip" weight="bold" style={{ marginTop: 8, color: p }}>
               {statusLabel}
-              {km != null ? ` · ${formatDistanceKm(km)}` : ''}
+              {distanceLabel ? ` · ~ ${distanceLabel}` : ''}
             </Text>
           </View>
           <Ionicons name="chevron-forward" size={20} color={theme.colors.muted} />

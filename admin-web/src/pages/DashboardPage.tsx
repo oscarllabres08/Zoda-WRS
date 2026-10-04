@@ -9,16 +9,49 @@ import { orderCountsTowardOnlineSales } from '../lib/orderSalesEligible';
 import { LOW_STOCK_THRESHOLD } from '../lib/inventoryStock';
 import { supabase } from '../lib/supabase';
 
-type OrderRow = {
+type RecentOrderRow = {
+  id: string;
+  source: 'online' | 'walk-in';
+  status: string;
+  customer_name: string;
+  created_at: string;
+  payment_settled: boolean;
+};
+
+const RECENT_ORDERS_PAGE = 10;
+
+function mapOnlineRecent(o: {
   id: string;
   status: string;
   customer_name: string;
   created_at: string;
   payment_settled: boolean | null;
-  payment_method: string | null;
-};
+}): RecentOrderRow {
+  return {
+    id: o.id,
+    source: 'online',
+    status: o.status,
+    customer_name: o.customer_name?.trim() || 'Customer',
+    created_at: o.created_at,
+    payment_settled: o.payment_settled === true,
+  };
+}
 
-const RECENT_ORDERS_PAGE = 10;
+function mapWalkInRecent(s: {
+  id: string;
+  customer_name: string | null;
+  created_at: string;
+  payment_settled: boolean | null;
+}): RecentOrderRow {
+  return {
+    id: s.id,
+    source: 'walk-in',
+    status: 'completed',
+    customer_name: s.customer_name?.trim() || 'Walk-in customer',
+    created_at: s.created_at,
+    payment_settled: s.payment_settled === true,
+  };
+}
 
 function startOfToday() {
   const d = new Date();
@@ -31,7 +64,7 @@ export function DashboardPage() {
   const [onlineToday, setOnlineToday] = useState(0);
   const [walkInToday, setWalkInToday] = useState(0);
   const [pendingCount, setPendingCount] = useState(0);
-  const [recent, setRecent] = useState<OrderRow[]>([]);
+  const [recent, setRecent] = useState<RecentOrderRow[]>([]);
   const [recentHasMore, setRecentHasMore] = useState(false);
   const [recentLoadingMore, setRecentLoadingMore] = useState(false);
   const [staffPending, setStaffPending] = useState(0);
@@ -41,15 +74,33 @@ export function DashboardPage() {
 
   const fetchRecentOrders = useCallback(
     async (offset: number) => {
-      if (!businessId) return [] as OrderRow[];
-      const { data, error } = await supabase
-        .from('orders')
-        .select('id,status,customer_name,created_at,payment_settled,payment_method')
-        .eq('seller_id', businessId)
-        .order('created_at', { ascending: false })
-        .range(offset, offset + RECENT_ORDERS_PAGE - 1);
-      if (error) throw error;
-      return (data ?? []) as OrderRow[];
+      if (!businessId) return { rows: [] as RecentOrderRow[], hasMore: false };
+      const fetchLimit = offset + RECENT_ORDERS_PAGE + 1;
+      const [ordersRes, posRes] = await Promise.all([
+        supabase
+          .from('orders')
+          .select('id,status,customer_name,created_at,payment_settled')
+          .eq('seller_id', businessId)
+          .order('created_at', { ascending: false })
+          .limit(fetchLimit),
+        supabase
+          .from('pos_sales')
+          .select('id,customer_name,created_at,payment_settled')
+          .eq('seller_id', businessId)
+          .order('created_at', { ascending: false })
+          .limit(fetchLimit),
+      ]);
+      if (ordersRes.error) throw ordersRes.error;
+      if (posRes.error) throw posRes.error;
+
+      const merged = [
+        ...(ordersRes.data ?? []).map((o) => mapOnlineRecent(o as Parameters<typeof mapOnlineRecent>[0])),
+        ...(posRes.data ?? []).map((s) => mapWalkInRecent(s as Parameters<typeof mapWalkInRecent>[0])),
+      ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+      const rows = merged.slice(offset, offset + RECENT_ORDERS_PAGE);
+      const hasMore = merged.length > offset + RECENT_ORDERS_PAGE;
+      return { rows, hasMore };
     },
     [businessId]
   );
@@ -60,7 +111,7 @@ export function DashboardPage() {
 
     const today = todayDateInputValue();
 
-    const [ordersRes, posRes, pendingRes, recentRows, staffRes, prodRes, lowStockRes, expensesRes] = await Promise.all([
+    const [ordersRes, posRes, pendingRes, recentResult, staffRes, prodRes, lowStockRes, expensesRes] = await Promise.all([
       supabase
         .from('orders')
         .select('id,status,payment_settled,payment_method,order_items(unit_price,quantity)')
@@ -124,8 +175,8 @@ export function DashboardPage() {
     setWalkInToday(walk);
     setExpensesToday(expenses);
     setPendingCount(pendingRes.count ?? 0);
-    setRecent(recentRows);
-    setRecentHasMore(recentRows.length === RECENT_ORDERS_PAGE);
+    setRecent(recentResult.rows);
+    setRecentHasMore(recentResult.hasMore);
     setStaffPending(staffRes.count ?? 0);
     setProductCount(prodRes.count ?? 0);
     setLowStockCount(lowStockRes.count ?? 0);
@@ -136,8 +187,8 @@ export function DashboardPage() {
     setRecentLoadingMore(true);
     try {
       const next = await fetchRecentOrders(recent.length);
-      setRecent((prev) => [...prev, ...next]);
-      setRecentHasMore(next.length === RECENT_ORDERS_PAGE);
+      setRecent((prev) => [...prev, ...next.rows]);
+      setRecentHasMore(next.hasMore);
     } finally {
       setRecentLoadingMore(false);
     }
@@ -233,29 +284,41 @@ export function DashboardPage() {
       ) : null}
 
       <div className="card">
-        <h2 style={{ margin: '0 0 12px', fontSize: 18 }}>Recent orders (from customer app)</h2>
+        <h2 style={{ margin: '0 0 12px', fontSize: 18 }}>Recent orders</h2>
         <div className="table-wrap">
           <table className="data-table">
             <thead>
               <tr>
                 <th>Customer</th>
+                <th>Type</th>
                 <th>Status</th>
+                <th>Payment</th>
                 <th>When</th>
               </tr>
             </thead>
             <tbody>
               {recent.length === 0 ? (
                 <tr>
-                  <td colSpan={3} style={{ color: 'var(--muted)' }}>
+                  <td colSpan={5} style={{ color: 'var(--muted)' }}>
                     No orders yet.
                   </td>
                 </tr>
               ) : (
                 recent.map((o) => (
-                  <tr key={o.id}>
+                  <tr key={`${o.source}-${o.id}`}>
                     <td>{o.customer_name}</td>
                     <td>
+                      <span className={`sales-pill ${o.source === 'online' ? 'online' : 'walk'}`}>
+                        {o.source === 'online' ? 'Online' : 'Walk-in'}
+                      </span>
+                    </td>
+                    <td>
                       <span className={`chip ${o.status === 'pending' ? 'pending' : 'ok'}`}>{o.status}</span>
+                    </td>
+                    <td>
+                      <span className={`sales-pill ${o.payment_settled ? 'paid' : 'unpaid'}`}>
+                        {o.payment_settled ? 'Paid' : 'Unpaid'}
+                      </span>
                     </td>
                     <td>{new Date(o.created_at).toLocaleString()}</td>
                   </tr>
@@ -277,8 +340,8 @@ export function DashboardPage() {
           </div>
         ) : null}
         <p style={{ margin: '12px 0 0', color: 'var(--muted)', fontSize: 13, fontWeight: 600 }}>
-          Sellers fulfill these in the <strong>Seller mobile app</strong>; customers place them in the{' '}
-          <strong>Customer mobile app</strong>.
+          Online orders come from the <strong>Customer app</strong>; walk-in sales are recorded in{' '}
+          <Link to="/pos">POS</Link>.
         </p>
       </div>
     </>

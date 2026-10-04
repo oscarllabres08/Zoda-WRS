@@ -29,6 +29,8 @@ type NavIconId =
 
   | 'expenses'
 
+  | 'ewallet'
+
   | 'settings'
 
   | 'signout';
@@ -195,6 +197,20 @@ function NavIcon({ id }: { id: NavIconId }) {
 
       );
 
+    case 'ewallet':
+
+      return (
+
+        <svg {...common}>
+
+          <rect x="3" y="6" width="18" height="13" rx="2.5" stroke="currentColor" strokeWidth="1.8" />
+
+          <path d="M3 10h18M16 14h2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+
+        </svg>
+
+      );
+
     case 'settings':
 
       return (
@@ -280,6 +296,8 @@ const NAV_WRS = [
   { to: '/sales', label: 'Sales & Analytics', icon: 'sales' as const },
 
   { to: '/expenses', label: 'Expenses', icon: 'expenses' as const },
+
+  { to: '/ewallet', label: 'E-wallet', icon: 'ewallet' as const },
 
   { to: '/staff', label: 'Staff management', icon: 'staff' as const },
 

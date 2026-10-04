@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, Image, Linking, Modal, Pressable, ScrollView, Switch, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import * as Location from 'expo-location';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 
+import { orderDistanceKm, formatOrderDistance } from '../../lib/orderDistance';
 import { publicWrsAssetUrl } from '../../lib/publicAssetUrl';
 import { markOrderViewed } from '../../lib/viewedOrders';
 import { supabase } from '../../lib/supabase';
@@ -34,6 +36,7 @@ type OrderRow = {
   credit_note: string | null;
   payment_reference: string | null;
   payment_proof_path: string | null;
+  delivery_distance_meters?: number | null;
 };
 
 type ItemRow = {
@@ -148,7 +151,8 @@ export default function OrderDetailsScreen() {
   const [updating, setUpdating] = useState(false);
   const [paymentUpdating, setPaymentUpdating] = useState(false);
   const [payConfirmOpen, setPayConfirmOpen] = useState(false);
-  const [sellerCoords, setSellerCoords] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [deviceCoords, setDeviceCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [storeCoords, setStoreCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [customerAvatarPath, setCustomerAvatarPath] = useState<string | null>(null);
   const [containerBalance, setContainerBalance] = useState<ContainerBalanceRow | null>(null);
   const [containerMovements, setContainerMovements] = useState<ContainerMovementRow[]>([]);
@@ -205,7 +209,7 @@ export default function OrderDetailsScreen() {
     const { data: o, error: oErr } = await supabase
       .from('orders')
       .select(
-        'id,customer_id,status,created_at,customer_name,delivery_address,landmark,contact_number,latitude,longitude,notes,payment_method,payment_settled,payment_due_date,credit_note,payment_reference,payment_proof_path'
+        'id,customer_id,status,created_at,customer_name,delivery_address,landmark,contact_number,latitude,longitude,notes,payment_method,payment_settled,payment_due_date,credit_note,payment_reference,payment_proof_path,delivery_distance_meters'
       )
       .eq('id', orderId)
       .single();
@@ -261,10 +265,13 @@ export default function OrderDetailsScreen() {
       .maybeSingle()
       .then(({ data }) => {
         if (!alive) return;
-        const lat = (data as { latitude?: number })?.latitude;
-        const lng = (data as { longitude?: number })?.longitude;
-        if (typeof lat === 'number' && typeof lng === 'number') setSellerCoords({ latitude: lat, longitude: lng });
-        else setSellerCoords(null);
+        const lat = (data as { latitude?: number | null })?.latitude;
+        const lng = (data as { longitude?: number | null })?.longitude;
+        if (typeof lat === 'number' && typeof lng === 'number' && Number.isFinite(lat) && Number.isFinite(lng)) {
+          setStoreCoords({ lat, lng });
+        } else {
+          setStoreCoords(null);
+        }
       });
     const instanceId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
     const channel = supabase
@@ -276,6 +283,36 @@ export default function OrderDetailsScreen() {
       supabase.removeChannel(channel);
     };
   }, [user, businessId, orderId, load]);
+
+  useEffect(() => {
+    let subscription: Location.LocationSubscription | null = null;
+    let cancelled = false;
+
+    (async () => {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (cancelled || status !== 'granted') return;
+
+      try {
+        const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        if (!cancelled) {
+          setDeviceCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        }
+        subscription = await Location.watchPositionAsync(
+          { accuracy: Location.Accuracy.Balanced, distanceInterval: 25, timeInterval: 15000 },
+          (loc) => {
+            setDeviceCoords({ lat: loc.coords.latitude, lng: loc.coords.longitude });
+          }
+        );
+      } catch {
+        /* keep store fallback */
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      subscription?.remove();
+    };
+  }, []);
 
   const total = useMemo(() => items.reduce((s, i) => s + i.unit_price * i.quantity, 0), [items]);
   const customerAvatarUri = useMemo(() => publicWrsAssetUrl(customerAvatarPath), [customerAvatarPath]);
@@ -419,7 +456,8 @@ export default function OrderDetailsScreen() {
   async function openInMaps() {
     if (!order) return;
     const hasCoords = typeof order.latitude === 'number' && typeof order.longitude === 'number';
-    const hasSeller = typeof sellerCoords?.latitude === 'number' && typeof sellerCoords?.longitude === 'number';
+    const ref = deviceCoords ?? storeCoords;
+    const hasOrigin = ref != null;
     const destLabel = hasCoords
       ? `${order.latitude},${order.longitude}`
       : `${order.delivery_address}${order.landmark ? `, ${order.landmark}` : ''}`.trim();
@@ -427,7 +465,7 @@ export default function OrderDetailsScreen() {
       Alert.alert('No address', 'This order has no delivery address or GPS pin to open in Maps.');
       return;
     }
-    const origin = hasSeller ? `${sellerCoords!.latitude},${sellerCoords!.longitude}` : undefined;
+    const origin = hasOrigin ? `${ref.lat},${ref.lng}` : undefined;
     const destEnc = encodeURIComponent(destLabel);
     const url = origin
       ? `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${destEnc}`
@@ -435,23 +473,12 @@ export default function OrderDetailsScreen() {
     await Linking.openURL(url);
   }
 
+  const distanceReference = deviceCoords ?? storeCoords;
   const distanceKm = useMemo(() => {
     if (!order) return null;
-    if (!sellerCoords) return null;
-    if (typeof order.latitude !== 'number' || typeof order.longitude !== 'number') return null;
-    const toRad = (d: number) => (d * Math.PI) / 180;
-    const R = 6371;
-    const dLat = toRad(order.latitude - sellerCoords.latitude);
-    const dLon = toRad(order.longitude - sellerCoords.longitude);
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(toRad(sellerCoords.latitude)) *
-        Math.cos(toRad(order.latitude)) *
-        Math.sin(dLon / 2) *
-        Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
-  }, [order, sellerCoords]);
+    return orderDistanceKm(order, distanceReference);
+  }, [order, distanceReference]);
+  const distanceLabel = formatOrderDistance(distanceKm);
 
   const outstandingContainers = containerBalance?.outstanding_count ?? 0;
   const lendsOnThisOrder = useMemo(
@@ -991,8 +1018,15 @@ export default function OrderDetailsScreen() {
                       Approx. distance
                     </Text>
                     <Text weight="extrabold" style={{ marginTop: 6, fontSize: 18, color: theme.colors.primary }}>
-                      {distanceKm !== null ? `${distanceKm.toFixed(1)} km` : '—'}
+                      {distanceLabel ? `~ ${distanceLabel}` : '—'}
                     </Text>
+                    {!distanceLabel ? (
+                      <Text variant="muted" weight="semibold" style={{ marginTop: 6, fontSize: 10, textAlign: 'center', lineHeight: 14 }}>
+                        {order.latitude == null && order.delivery_distance_meters == null
+                          ? 'Customer did not share GPS'
+                          : 'Set store GPS in Business Profile or turn on location'}
+                      </Text>
+                    ) : null}
                   </View>
                 </View>
 

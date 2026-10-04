@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 import { useAuth } from '../auth/AuthProvider';
 import { supabase } from '../lib/supabase';
@@ -220,46 +221,49 @@ export function AdminNotificationsButton({ placement = 'desktop' }: { placement?
         ) : null}
       </div>
 
-      {selected ? (
-        <div
-          className="modal-backdrop admin-notification-detail-backdrop"
-          role="presentation"
-          onClick={closeDetail}
-        >
-          <div
-            className={`modal-card admin-notification-detail-modal kind-${selected.kind.replace(/[^a-z0-9_-]/gi, '')}`}
-            role="dialog"
-            aria-labelledby="admin-notification-detail-title"
-            aria-modal="true"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="admin-notification-detail-head">
-              <span className="admin-notifications-item-meta">
-                <span className="admin-notifications-item-tag">{kindLabel(selected.kind)}</span>
-                {!selected.read_at ? <span className="admin-notifications-item-new">New</span> : null}
-              </span>
-              <button
-                type="button"
-                className="admin-notification-detail-close"
-                aria-label="Close notification"
-                onClick={closeDetail}
+      {selected
+        ? createPortal(
+            <div
+              className="modal-backdrop admin-notification-detail-backdrop"
+              role="presentation"
+              onClick={closeDetail}
+            >
+              <div
+                className={`modal-card admin-notification-detail-modal kind-${selected.kind.replace(/[^a-z0-9_-]/gi, '')}`}
+                role="dialog"
+                aria-labelledby="admin-notification-detail-title"
+                aria-modal="true"
+                onClick={(e) => e.stopPropagation()}
               >
-                <CloseIcon />
-              </button>
-            </div>
-            <h2 id="admin-notification-detail-title" className="admin-notification-detail-title">
-              {selected.title}
-            </h2>
-            <p className="admin-notification-detail-body">{selected.body}</p>
-            <p className="admin-notification-detail-time">{timeLabel(selected.created_at)}</p>
-            <div className="admin-notification-detail-actions">
-              <button type="button" className="btn btn-primary btn-sm" onClick={closeDetail}>
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+                <div className="admin-notification-detail-head">
+                  <span className="admin-notifications-item-meta">
+                    <span className="admin-notifications-item-tag">{kindLabel(selected.kind)}</span>
+                    {!selected.read_at ? <span className="admin-notifications-item-new">New</span> : null}
+                  </span>
+                  <button
+                    type="button"
+                    className="admin-notification-detail-close"
+                    aria-label="Close notification"
+                    onClick={closeDetail}
+                  >
+                    <CloseIcon />
+                  </button>
+                </div>
+                <h2 id="admin-notification-detail-title" className="admin-notification-detail-title">
+                  {selected.title}
+                </h2>
+                <p className="admin-notification-detail-body">{selected.body}</p>
+                <p className="admin-notification-detail-time">{timeLabel(selected.created_at)}</p>
+                <div className="admin-notification-detail-actions">
+                  <button type="button" className="btn btn-primary btn-sm" onClick={closeDetail}>
+                    Close
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
     </div>
   );
 }

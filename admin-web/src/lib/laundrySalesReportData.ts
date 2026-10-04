@@ -53,6 +53,7 @@ function aggregateLaundry(pos: LaundryPosRow[], timelineMode: 'day' | 'month'): 
       amount: amt,
       status: 'paid',
       productLabel: names.join(', ') || 'Laundry sale',
+      customerName: s.customer_name?.trim() || 'Walk-in customer',
     });
   }
 

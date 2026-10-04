@@ -18,7 +18,11 @@ import {
 
   loadSalesAnalyticsView,
 
-  pctChange,
+  formatPctChangeLabel,
+
+  RECENT_SALES_PAGE,
+
+  type RecentSaleRow,
 
   type SalesDashboardData,
 
@@ -28,11 +32,13 @@ import {
 
 
 
-type DisplayGranularity = 'month' | 'year';
+type DisplayGranularity = 'today' | 'month' | 'year';
 
 
 
 const DISPLAY_GRANULARITY: { id: DisplayGranularity; label: string }[] = [
+
+  { id: 'today', label: 'Today' },
 
   { id: 'month', label: 'Month' },
 
@@ -82,6 +88,10 @@ export function SalesAnalyticsPage() {
 
   const [exportError, setExportError] = useState<string | null>(null);
 
+  const [selectedSale, setSelectedSale] = useState<RecentSaleRow | null>(null);
+
+  const [recentVisible, setRecentVisible] = useState(RECENT_SALES_PAGE);
+
   const now = new Date();
 
   const [exportYear, setExportYear] = useState(now.getFullYear());
@@ -98,7 +108,8 @@ export function SalesAnalyticsPage() {
 
 
 
-  const analyticsMode: SalesDisplayMode = displayGranularity === 'month' ? 'day' : 'month';
+  const analyticsMode: SalesDisplayMode =
+    displayGranularity === 'today' ? 'today' : displayGranularity === 'month' ? 'day' : 'month';
 
 
 
@@ -110,9 +121,10 @@ export function SalesAnalyticsPage() {
 
     try {
 
-      const dash = await loadSalesAnalyticsView(businessId, analyticsMode, filterYear, filterMonth);
+      const dash = await loadSalesAnalyticsView(businessId, analyticsMode, filterYear, filterMonth, filterDay);
 
       setData(dash);
+      setRecentVisible(RECENT_SALES_PAGE);
 
     } finally {
 
@@ -120,7 +132,7 @@ export function SalesAnalyticsPage() {
 
     }
 
-  }, [businessId, analyticsMode, filterYear, filterMonth]);
+  }, [businessId, analyticsMode, filterYear, filterMonth, filterDay]);
 
 
 
@@ -139,6 +151,22 @@ export function SalesAnalyticsPage() {
 
   const filterLabel = useMemo(() => {
 
+    if (displayGranularity === 'today') {
+
+      return new Date(filterYear, filterMonth, filterDay).toLocaleDateString('en-US', {
+
+        weekday: 'long',
+
+        month: 'long',
+
+        day: 'numeric',
+
+        year: 'numeric',
+
+      });
+
+    }
+
     if (displayGranularity === 'month') {
 
       return new Date(filterYear, filterMonth, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
@@ -147,17 +175,17 @@ export function SalesAnalyticsPage() {
 
     return String(filterYear);
 
-  }, [displayGranularity, filterYear, filterMonth]);
+  }, [displayGranularity, filterYear, filterMonth, filterDay]);
 
 
 
-  const chartSlotWidth = displayGranularity === 'month' ? 44 : 52;
+  const chartSlotWidth = displayGranularity === 'year' ? 52 : 44;
 
 
 
-  const salesPct = data ? pctChange(data.totalSales, data.prevTotalSales) : null;
+  const salesChangeLabel = data ? formatPctChangeLabel(data.totalSales, data.prevTotalSales) : null;
 
-  const ordersPct = data ? pctChange(data.totalOrderCount, data.prevTotalOrders) : null;
+  const ordersChangeLabel = data ? formatPctChangeLabel(data.totalOrderCount, data.prevTotalOrders) : null;
 
 
 
@@ -263,7 +291,10 @@ export function SalesAnalyticsPage() {
 
                 className={`pos-category-tab${displayGranularity === p.id ? ' active' : ''}`}
 
-                onClick={() => setDisplayGranularity(p.id)}
+                onClick={() => {
+                  setDisplayGranularity(p.id);
+                  if (p.id === 'today') setSelectedDate(toDateInputValue(new Date()));
+                }}
 
               >
 
@@ -421,17 +452,17 @@ export function SalesAnalyticsPage() {
 
           <div className="sales-kpi-grid">
 
-            <KpiCard label="Total Sales" value={money(data.totalSales)} delta={salesPct} />
+            <KpiCard label="Total Sales" value={money(data.totalSales)} changeLabel={salesChangeLabel} />
 
-            <KpiCard label="Total Orders" value={String(data.totalOrderCount)} delta={ordersPct} />
+            <KpiCard label="Total Orders" value={String(data.totalOrderCount)} changeLabel={ordersChangeLabel} />
 
-            <KpiCard label="Online Sales" value={money(data.onlineSales)} sub={`${onlineShare.toFixed(0)}% of total sales`} />
+            <KpiCard label="Online Sales" value={money(data.onlineSales)} sub={`${onlineShare.toFixed(1)}% of total sales`} />
 
-            <KpiCard label="Walk-in Sales" value={money(data.walkInSales)} sub={`${walkShare.toFixed(0)}% of total sales`} />
+            <KpiCard label="Walk-in Sales" value={money(data.walkInSales)} sub={`${walkShare.toFixed(1)}% of total sales`} />
 
-            <KpiCard label="Paid Orders" value={String(data.paidOrders)} sub={`${paidShare.toFixed(0)}% of orders`} />
+            <KpiCard label="Paid Orders" value={String(data.paidOrders)} sub={`${paidShare.toFixed(1)}% of orders`} />
 
-            <KpiCard label="Unpaid Orders" value={String(data.unpaidOrders)} sub={`${unpaidShare.toFixed(0)}% of orders`} />
+            <KpiCard label="Unpaid Orders" value={String(data.unpaidOrders)} sub={`${unpaidShare.toFixed(1)}% of orders`} />
 
           </div>
 
@@ -447,7 +478,15 @@ export function SalesAnalyticsPage() {
 
                 {filterLabel}
 
-                {displayGranularity === 'month' ? ` · ${data.timeline.length} days` : ' · 12 months'}
+                {displayGranularity === 'today'
+
+                  ? ' · Last 7 days'
+
+                  : displayGranularity === 'month'
+
+                    ? ` · ${data.timeline.length} days`
+
+                    : ' · 12 months'}
 
               </p>
 
@@ -487,78 +526,14 @@ export function SalesAnalyticsPage() {
 
 
 
-          <div className="sales-lower-grid">
-
-            <div className="card card-flat">
-
-              <h2 className="inventory-section-title">Top Selling Products</h2>
-
-              {data.topProducts.length > 0 ? (
-                <p className="sales-table-hint">Swipe sideways to see all columns</p>
-              ) : null}
-
-              {data.topProducts.length === 0 ? (
-
-                <p className="muted-block">No sales in this period.</p>
-
-              ) : (
-
-                <div className="table-wrap sales-table-scroll">
-
-                  <table className="data-table sales-top-table">
-
-                    <thead>
-
-                      <tr>
-
-                        <th>#</th>
-
-                        <th>Product</th>
-
-                        <th>Units</th>
-
-                        <th>Revenue</th>
-
-                      </tr>
-
-                    </thead>
-
-                    <tbody>
-
-                      {data.topProducts.map((p, i) => (
-
-                        <tr key={p.name}>
-
-                          <td>{i + 1}</td>
-
-                          <td>{p.name}</td>
-
-                          <td>{p.units}</td>
-
-                          <td>{money(p.revenue)}</td>
-
-                        </tr>
-
-                      ))}
-
-                    </tbody>
-
-                  </table>
-
-                </div>
-
-              )}
-
-            </div>
-
-
+          <div className="sales-lower-grid sales-lower-grid--recent-only">
 
             <div className="card card-flat">
 
               <h2 className="inventory-section-title">Recent Sales</h2>
 
               {data.recentSales.length > 0 ? (
-                <p className="sales-table-hint">Swipe sideways to see all columns</p>
+                <p className="sales-table-hint">Tap a row to view customer details · swipe sideways for all columns</p>
               ) : null}
 
               <div className="table-wrap sales-table-scroll">
@@ -569,15 +544,19 @@ export function SalesAnalyticsPage() {
 
                     <tr>
 
-                      <th>Date &amp; Time</th>
+                      <th className="sales-col-customer">Customer</th>
 
-                      <th>Product</th>
+                      <th className="sales-col-datetime">Date &amp; Time</th>
 
-                      <th>Type</th>
+                      <th className="sales-col-product">Product</th>
 
-                      <th>Amount</th>
+                      <th className="sales-col-type">Type</th>
 
-                      <th>Status</th>
+                      <th className="sales-col-payment">Payment</th>
+
+                      <th className="sales-col-amount">Amount</th>
+
+                      <th className="sales-col-status">Status</th>
 
                     </tr>
 
@@ -589,7 +568,7 @@ export function SalesAnalyticsPage() {
 
                       <tr>
 
-                        <td colSpan={5} className="muted-block">
+                        <td colSpan={7} className="muted-block">
 
                           No transactions yet.
 
@@ -599,11 +578,25 @@ export function SalesAnalyticsPage() {
 
                     ) : (
 
-                      data.recentSales.map((r) => (
+                      data.recentSales.slice(0, recentVisible).map((r) => (
 
-                        <tr key={r.id}>
+                        <tr
+                          key={r.id}
+                          className="sales-row-clickable"
+                          tabIndex={0}
+                          role="button"
+                          onClick={() => setSelectedSale(r)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              setSelectedSale(r);
+                            }
+                          }}
+                        >
 
-                          <td>
+                          <td className="sales-col-customer">{r.customerName}</td>
+
+                          <td className="sales-col-datetime">
 
                             {r.at.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })},{' '}
 
@@ -611,9 +604,9 @@ export function SalesAnalyticsPage() {
 
                           </td>
 
-                          <td>{r.productLabel}</td>
+                          <td className="sales-col-product">{r.productLabel}</td>
 
-                          <td>
+                          <td className="sales-col-type">
 
                             <span className={`sales-pill ${r.type === 'online' ? 'online' : 'walk'}`}>
 
@@ -623,9 +616,19 @@ export function SalesAnalyticsPage() {
 
                           </td>
 
-                          <td>{money(r.amount)}</td>
+                          <td className="sales-col-payment">
 
-                          <td>
+                            <span className={`sales-pill ${r.paymentMethod === 'GCash' ? 'gcash' : r.paymentMethod === 'Cash' ? 'cash' : 'neutral'}`}>
+
+                              {r.paymentMethod}
+
+                            </span>
+
+                          </td>
+
+                          <td className="sales-col-amount">{money(r.amount)}</td>
+
+                          <td className="sales-col-status">
 
                             <span className={`sales-pill ${r.status}`}>{r.status === 'paid' ? 'Paid' : 'Unpaid'}</span>
 
@@ -643,12 +646,78 @@ export function SalesAnalyticsPage() {
 
               </div>
 
+              {data.recentSales.length > recentVisible ? (
+                <div style={{ marginTop: 12, textAlign: 'center' }}>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => setRecentVisible((v) => v + RECENT_SALES_PAGE)}
+                  >
+                    Show more
+                  </button>
+                </div>
+              ) : null}
+
             </div>
 
           </div>
 
         </>
 
+      ) : null}
+
+      {selectedSale ? (
+        <div className="modal-backdrop" onClick={() => setSelectedSale(null)} role="presentation">
+          <div className="modal-card sales-sale-detail-modal" role="dialog" aria-labelledby="sales-sale-detail-title" onClick={(e) => e.stopPropagation()}>
+            <h2 id="sales-sale-detail-title" style={{ margin: '0 0 12px', fontSize: 18 }}>
+              Sale details
+            </h2>
+            <dl className="sales-sale-detail-list">
+              <div>
+                <dt>Customer</dt>
+                <dd>{selectedSale.customerName}</dd>
+              </div>
+              <div>
+                <dt>Date &amp; time</dt>
+                <dd>
+                  {selectedSale.at.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })},{' '}
+                  {selectedSale.at.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                </dd>
+              </div>
+              <div>
+                <dt>Type</dt>
+                <dd>
+                  <span className={`sales-pill ${selectedSale.type === 'online' ? 'online' : 'walk'}`}>
+                    {selectedSale.type === 'online' ? 'Online' : 'Walk-in'}
+                  </span>
+                </dd>
+              </div>
+              <div>
+                <dt>Products</dt>
+                <dd>{selectedSale.productLabel}</dd>
+              </div>
+              <div>
+                <dt>Amount</dt>
+                <dd>{money(selectedSale.amount)}</dd>
+              </div>
+              <div>
+                <dt>Payment method</dt>
+                <dd>{selectedSale.paymentMethod}</dd>
+              </div>
+              <div>
+                <dt>Status</dt>
+                <dd>
+                  <span className={`sales-pill ${selectedSale.status}`}>
+                    {selectedSale.status === 'paid' ? 'Paid' : 'Unpaid'}
+                  </span>
+                </dd>
+              </div>
+            </dl>
+            <button type="button" className="btn btn-primary btn-block" style={{ marginTop: 16 }} onClick={() => setSelectedSale(null)}>
+              Close
+            </button>
+          </div>
+        </div>
       ) : null}
 
     </div>
@@ -665,7 +734,7 @@ function KpiCard({
 
   value,
 
-  delta,
+  changeLabel,
 
   sub,
 
@@ -675,11 +744,14 @@ function KpiCard({
 
   value: string;
 
-  delta?: number | null;
+  changeLabel?: string | null;
 
   sub?: string;
 
 }) {
+
+  const changeTone =
+    changeLabel?.startsWith('-') ? ' down' : changeLabel ? ' up' : '';
 
   return (
 
@@ -689,15 +761,9 @@ function KpiCard({
 
       <div className="sales-kpi-value">{value}</div>
 
-      {delta != null ? (
+      {changeLabel ? (
 
-        <div className={`sales-kpi-delta${delta >= 0 ? ' up' : ' down'}`}>
-
-          {delta >= 0 ? '+' : ''}
-
-          {delta.toFixed(0)}% vs previous period
-
-        </div>
+        <div className={`sales-kpi-delta${changeTone}`}>{changeLabel}</div>
 
       ) : sub ? (
 
@@ -705,7 +771,7 @@ function KpiCard({
 
       ) : null}
 
-      {delta != null && sub ? <div className="sales-kpi-sub">{sub}</div> : null}
+      {changeLabel && sub ? <div className="sales-kpi-sub">{sub}</div> : null}
 
     </div>
 

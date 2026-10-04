@@ -611,7 +611,8 @@ function InventoryRow({
         )}
         <label className="checkbox-row compact inventory-avail-toggle">
           <input type="checkbox" checked={p.is_available} onChange={(e) => onToggleAvail(e.target.checked)} />
-          Available in customer app
+          <span className="inventory-avail-label-long">Available in customer app</span>
+          <span className="inventory-avail-label-short">In app</span>
         </label>
       </div>
       <div className="inventory-row-actions">

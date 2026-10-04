@@ -21,11 +21,21 @@ type Toast = {
   orderId?: string;
 };
 
+type NotificationPrefsUpdate = {
+  notifications_enabled?: boolean;
+  notification_sound_enabled?: boolean;
+};
+
 type NotificationsContextValue = {
   unreadCount: number;
   refresh: () => Promise<void>;
   toast: Toast | null;
   dismissToast: () => void;
+  notificationsEnabled: boolean;
+  soundEnabled: boolean;
+  prefsLoading: boolean;
+  prefsSaving: boolean;
+  updateNotificationPrefs: (next: NotificationPrefsUpdate) => Promise<void>;
 };
 
 const NotificationsContext = createContext<NotificationsContextValue | undefined>(undefined);
@@ -34,6 +44,10 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   const { user, isStoreOwner } = useAuth();
   const [unreadCount, setUnreadCount] = useState(0);
   const [toast, setToast] = useState<Toast | null>(null);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  const [soundEnabled, setSoundEnabled] = useState(true);
+  const [prefsLoading, setPrefsLoading] = useState(true);
+  const [prefsSaving, setPrefsSaving] = useState(false);
   const lastPopupIdRef = useRef<string | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prefsRef = useRef({ notificationsEnabled: true, soundEnabled: true });
@@ -72,26 +86,62 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     return () => clearInterval(t);
   }, [user?.id, isStoreOwner, refresh]);
 
-  useEffect(() => {
-    if (!user?.id || !isStoreOwner) return;
-    let alive = true;
-    void (async () => {
-      const { data } = await supabase
-        .from('profiles')
-        .select('notifications_enabled,notification_sound_enabled')
-        .eq('user_id', user.id)
-        .maybeSingle();
-      if (!alive) return;
-      const row = data as { notifications_enabled?: boolean; notification_sound_enabled?: boolean } | null;
-      prefsRef.current = {
-        notificationsEnabled: row?.notifications_enabled ?? true,
-        soundEnabled: row?.notification_sound_enabled ?? true,
-      };
-    })();
-    return () => {
-      alive = false;
+  const loadPrefs = useCallback(async () => {
+    if (!user?.id || !isStoreOwner) {
+      setPrefsLoading(false);
+      return;
+    }
+    setPrefsLoading(true);
+    const { data } = await supabase
+      .from('profiles')
+      .select('notifications_enabled,notification_sound_enabled')
+      .eq('user_id', user.id)
+      .maybeSingle();
+    const row = data as { notifications_enabled?: boolean; notification_sound_enabled?: boolean } | null;
+    const next = {
+      notificationsEnabled: row?.notifications_enabled ?? true,
+      soundEnabled: row?.notification_sound_enabled ?? true,
     };
+    prefsRef.current = next;
+    setNotificationsEnabled(next.notificationsEnabled);
+    setSoundEnabled(next.soundEnabled);
+    setPrefsLoading(false);
   }, [user?.id, isStoreOwner]);
+
+  useEffect(() => {
+    void loadPrefs();
+  }, [loadPrefs]);
+
+  const updateNotificationPrefs = useCallback(
+    async (next: NotificationPrefsUpdate) => {
+      if (!user?.id || !isStoreOwner) return;
+      setPrefsSaving(true);
+
+      const merged = {
+        notifications_enabled:
+          next.notifications_enabled ?? prefsRef.current.notificationsEnabled,
+        notification_sound_enabled:
+          next.notification_sound_enabled ?? prefsRef.current.soundEnabled,
+      };
+
+      if (!merged.notifications_enabled) {
+        merged.notification_sound_enabled = false;
+      }
+
+      const { error } = await supabase.from('profiles').update(merged).eq('user_id', user.id);
+      if (!error) {
+        prefsRef.current = {
+          notificationsEnabled: merged.notifications_enabled,
+          soundEnabled: merged.notification_sound_enabled,
+        };
+        setNotificationsEnabled(merged.notifications_enabled);
+        setSoundEnabled(merged.notification_sound_enabled);
+      }
+
+      setPrefsSaving(false);
+    },
+    [user?.id, isStoreOwner]
+  );
 
   useEffect(() => {
     if (!user?.id || !isStoreOwner) return;
@@ -153,8 +203,28 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo<NotificationsContextValue>(
-    () => ({ unreadCount, refresh, toast, dismissToast }),
-    [unreadCount, refresh, toast, dismissToast]
+    () => ({
+      unreadCount,
+      refresh,
+      toast,
+      dismissToast,
+      notificationsEnabled,
+      soundEnabled,
+      prefsLoading,
+      prefsSaving,
+      updateNotificationPrefs,
+    }),
+    [
+      unreadCount,
+      refresh,
+      toast,
+      dismissToast,
+      notificationsEnabled,
+      soundEnabled,
+      prefsLoading,
+      prefsSaving,
+      updateNotificationPrefs,
+    ]
   );
 
   return <NotificationsContext.Provider value={value}>{children}</NotificationsContext.Provider>;

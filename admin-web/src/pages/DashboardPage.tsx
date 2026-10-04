@@ -83,7 +83,12 @@ export function DashboardPage() {
         .eq('category', 'other')
         .not('stock_quantity', 'is', null)
         .lte('stock_quantity', LOW_STOCK_THRESHOLD),
-      supabase.from('business_expenses').select('amount').eq('seller_id', businessId).eq('expense_date', today),
+      supabase
+        .from('business_expenses')
+        .select('amount')
+        .eq('seller_id', businessId)
+        .eq('business_unit', 'wrs')
+        .eq('expense_date', today),
     ]);
 
     let online = 0;

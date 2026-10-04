@@ -11,9 +11,12 @@ import { LoyaltyPage } from './pages/LoyaltyPage';
 import { PosPage } from './pages/PosPage';
 import { SalesPage } from './pages/SalesPage';
 import { StaffPage } from './pages/StaffPage';
+import { LaundryDashboardPage } from './pages/LaundryDashboardPage';
+import { LaundryExpensesPage } from './pages/LaundryExpensesPage';
 import { LaundryPosPage } from './pages/LaundryPosPage';
 import { LaundrySalesPage } from './pages/LaundrySalesPage';
 import { LaundryServicesPage } from './pages/LaundryServicesPage';
+import { SettingsPage } from './pages/SettingsPage';
 
 function ProtectedAdmin() {
   const { user, loading, profileLoading, isStoreOwner } = useAuth();
@@ -47,11 +50,14 @@ export default function App() {
         <Route path="analytics" element={<Navigate to="/sales" replace />} />
         <Route path="customers" element={<CustomersPage />} />
         <Route path="expenses" element={<ExpensesPage />} />
+        <Route path="settings" element={<SettingsPage />} />
         <Route path="laundry">
-          <Route index element={<Navigate to="/laundry/pos" replace />} />
+          <Route index element={<Navigate to="/laundry/dashboard" replace />} />
+          <Route path="dashboard" element={<LaundryDashboardPage />} />
           <Route path="pos" element={<LaundryPosPage />} />
           <Route path="services" element={<LaundryServicesPage />} />
           <Route path="sales" element={<LaundrySalesPage />} />
+          <Route path="expenses" element={<LaundryExpensesPage />} />
         </Route>
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

@@ -59,6 +59,7 @@ export function AdminNotificationsButton({ placement = 'desktop' }: { placement?
   const { user } = useAuth();
   const { unreadCount, refresh, toast, dismissToast } = useNotifications();
   const [open, setOpen] = useState(false);
+  const [selected, setSelected] = useState<NotifRow | null>(null);
   const [rows, setRows] = useState<NotifRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -85,13 +86,22 @@ export function AdminNotificationsButton({ placement = 'desktop' }: { placement?
   }, [open, unreadCount, load]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || selected) return;
     function onDocClick(e: MouseEvent) {
       if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
     }
     document.addEventListener('mousedown', onDocClick);
     return () => document.removeEventListener('mousedown', onDocClick);
-  }, [open]);
+  }, [open, selected]);
+
+  useEffect(() => {
+    if (!selected) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') setSelected(null);
+    }
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [selected]);
 
   const localUnread = useMemo(() => rows.filter((r) => !r.read_at).length, [rows]);
   const badge = Math.max(unreadCount, localUnread);
@@ -118,7 +128,18 @@ export function AdminNotificationsButton({ placement = 'desktop' }: { placement?
   }
 
   async function onItemClick(n: NotifRow) {
-    await markRead(n.id);
+    if (!n.read_at) await markRead(n.id);
+    setSelected(n);
+  }
+
+  function closeDetail() {
+    setSelected(null);
+  }
+
+  function goFromDetail() {
+    if (!selected) return;
+    const n = selected;
+    setSelected(null);
     setOpen(false);
     navigateFromAdminNotification(navigate, {
       kind: n.kind,
@@ -212,6 +233,50 @@ export function AdminNotificationsButton({ placement = 'desktop' }: { placement?
           </div>
         ) : null}
       </div>
+
+      {selected ? (
+        <div
+          className="modal-backdrop admin-notification-detail-backdrop"
+          role="presentation"
+          onClick={closeDetail}
+        >
+          <div
+            className={`modal-card admin-notification-detail-modal kind-${selected.kind.replace(/[^a-z0-9_-]/gi, '')}`}
+            role="dialog"
+            aria-labelledby="admin-notification-detail-title"
+            aria-modal="true"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="admin-notification-detail-head">
+              <span className="admin-notifications-item-meta">
+                <span className="admin-notifications-item-tag">{kindLabel(selected.kind)}</span>
+                {!selected.read_at ? <span className="admin-notifications-item-new">New</span> : null}
+              </span>
+              <button
+                type="button"
+                className="admin-notification-detail-close"
+                aria-label="Close notification"
+                onClick={closeDetail}
+              >
+                <CloseIcon />
+              </button>
+            </div>
+            <h2 id="admin-notification-detail-title" className="admin-notification-detail-title">
+              {selected.title}
+            </h2>
+            <p className="admin-notification-detail-body">{selected.body}</p>
+            <p className="admin-notification-detail-time">{timeLabel(selected.created_at)}</p>
+            <div className="admin-notification-detail-actions">
+              <button type="button" className="btn btn-primary btn-sm" onClick={goFromDetail}>
+                Open related page
+              </button>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={closeDetail}>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

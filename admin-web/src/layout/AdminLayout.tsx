@@ -29,6 +29,8 @@ type NavIconId =
 
   | 'expenses'
 
+  | 'settings'
+
   | 'signout';
 
 
@@ -193,6 +195,30 @@ function NavIcon({ id }: { id: NavIconId }) {
 
       );
 
+    case 'settings':
+
+      return (
+
+        <svg {...common}>
+
+          <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.8" />
+
+          <path
+
+            d="M12 2v2M12 20v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M2 12h2M20 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"
+
+            stroke="currentColor"
+
+            strokeWidth="1.8"
+
+            strokeLinecap="round"
+
+          />
+
+        </svg>
+
+      );
+
     case 'signout':
 
       return (
@@ -259,15 +285,23 @@ const NAV_WRS = [
 
   { to: '/customers', label: 'Customer list', icon: 'customers' as const },
 
+  { to: '/settings', label: 'Settings', icon: 'settings' as const },
+
 ] as const;
 
 const NAV_LAUNDRY = [
+
+  { to: '/laundry/dashboard', label: 'Dashboard', end: true, icon: 'dashboard' as const },
 
   { to: '/laundry/pos', label: 'POS', icon: 'pos' as const },
 
   { to: '/laundry/services', label: 'Services', icon: 'inventory' as const },
 
   { to: '/laundry/sales', label: 'Sales & Analytics', icon: 'sales' as const },
+
+  { to: '/laundry/expenses', label: 'Expenses', icon: 'expenses' as const },
+
+  { to: '/settings', label: 'Settings', icon: 'settings' as const },
 
 ] as const;
 
@@ -401,7 +435,7 @@ export function AdminLayout() {
 
     setMode(next);
 
-    navigate(next === 'laundry' ? '/laundry/pos' : '/');
+    navigate(next === 'laundry' ? '/laundry/dashboard' : '/');
 
   }
 

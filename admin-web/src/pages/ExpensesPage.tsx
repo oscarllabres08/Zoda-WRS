@@ -22,8 +22,14 @@ type ExpenseRow = {
   created_at: string;
 };
 
-export function ExpensesPage() {
+type ExpensesPageProps = {
+  variant?: 'wrs' | 'laundry';
+};
+
+export function ExpensesPage({ variant = 'wrs' }: ExpensesPageProps) {
   const { businessId } = useAuth();
+  const isLaundry = variant === 'laundry';
+  const businessUnit = isLaundry ? 'laundry' : 'wrs';
   const [rows, setRows] = useState<ExpenseRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -49,7 +55,8 @@ export function ExpensesPage() {
     let query = supabase
       .from('business_expenses')
       .select('id,expense_type,others_label,amount,expense_date,notes,created_at')
-      .eq('seller_id', businessId);
+      .eq('seller_id', businessId)
+      .eq('business_unit', businessUnit);
 
     if (!viewAllDates) {
       query = query.eq('expense_date', viewDate);
@@ -63,7 +70,7 @@ export function ExpensesPage() {
     if (err) setLoadError(err.message);
     setRows((data ?? []) as ExpenseRow[]);
     setLoading(false);
-  }, [businessId, viewAllDates, viewDate]);
+  }, [businessId, businessUnit, viewAllDates, viewDate]);
 
   useEffect(() => {
     void load();
@@ -72,7 +79,7 @@ export function ExpensesPage() {
   useEffect(() => {
     if (!businessId) return;
     const ch = supabase
-      .channel(`admin-expenses-${businessId}`)
+      .channel(`admin-expenses-${businessId}-${businessUnit}`)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'business_expenses', filter: `seller_id=eq.${businessId}` },
@@ -82,7 +89,7 @@ export function ExpensesPage() {
     return () => {
       supabase.removeChannel(ch);
     };
-  }, [businessId, load]);
+  }, [businessId, businessUnit, load]);
 
   const dayTotal = useMemo(() => rows.reduce((sum, r) => sum + Number(r.amount), 0), [rows]);
 
@@ -105,6 +112,7 @@ export function ExpensesPage() {
     try {
       const { error: err } = await supabase.from('business_expenses').insert({
         seller_id: businessId,
+        business_unit: businessUnit,
         expense_type: expenseType,
         others_label: expenseType === 'others' ? othersLabel.trim() : null,
         amount: amt,
@@ -130,7 +138,12 @@ export function ExpensesPage() {
     if (!businessId) return;
     if (!window.confirm('Delete this expense entry?')) return;
     setLoadError(null);
-    const { error: err } = await supabase.from('business_expenses').delete().eq('id', id).eq('seller_id', businessId);
+    const { error: err } = await supabase
+      .from('business_expenses')
+      .delete()
+      .eq('id', id)
+      .eq('seller_id', businessId)
+      .eq('business_unit', businessUnit);
     if (err) setLoadError(err.message);
     else await load();
   }
@@ -144,7 +157,11 @@ export function ExpensesPage() {
     <>
       <PageHeader
         title="Expenses"
-        description="Pick a date to review costs, then add new entries below. Dashboard net income uses today's sales minus today's expenses."
+        description={
+          isLaundry
+            ? "Track laundry shop costs by date. Laundry dashboard net income uses today's POS sales minus today's expenses."
+            : "Pick a date to review costs, then add new entries below. Dashboard net income uses today's sales minus today's expenses."
+        }
       />
 
       <div className="card card-flat expenses-filter-card">

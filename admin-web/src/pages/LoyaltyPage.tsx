@@ -54,6 +54,10 @@ export function LoyaltyPage() {
 
   const [verifyState, setVerifyState] = useState<VerifyUiState>({ kind: 'idle' });
 
+  const [programDetailsOpen, setProgramDetailsOpen] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(min-width: 768px)').matches
+  );
+
 
 
   const branch =
@@ -103,6 +107,14 @@ export function LoyaltyPage() {
     void load();
 
   }, [load]);
+
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 768px)');
+    const sync = () => setProgramDetailsOpen(mq.matches);
+    sync();
+    mq.addEventListener('change', sync);
+    return () => mq.removeEventListener('change', sync);
+  }, []);
 
 
 
@@ -241,63 +253,42 @@ export function LoyaltyPage() {
 
 
       <div className="card card-flat loyalty-settings-card">
-
-        <div className="loyalty-settings-row">
-
-          <div className="loyalty-settings-copy">
-
-            <h2 className="inventory-section-title">Program status</h2>
-
-            <p className="muted-block loyalty-settings-desc">
-
-              When <strong>Active</strong>, delivered online orders can earn points on products you mark in Inventory.
-
-              Customers can redeem vouchers (10 points = 1 free refill code). When <strong>Off</strong>, no new points
-
-              are awarded and redemption is paused — existing voucher codes still work at the store.
-
-            </p>
-
-            {!loading ? (
-
-              <p className="loyalty-eligible-summary">
-
-                <strong>{eligibleCount}</strong> product{eligibleCount === 1 ? '' : 's'} marked for loyalty in Inventory
-
-                {active ? '' : ' (enable program to start earning)'}.
-
-              </p>
-
-            ) : null}
-
-          </div>
-
+        <div className="loyalty-program-head">
+          <h2 className="inventory-section-title">Program status</h2>
           <label className={`loyalty-toggle${active ? ' loyalty-toggle--on' : ''}`}>
-
             <input
-
               type="checkbox"
-
               checked={active}
-
               disabled={loading || saving}
-
               onChange={(e) => void onToggle(e.target.checked)}
-
               aria-label="Loyalty points program active"
-
             />
-
             <span className="loyalty-toggle-track" aria-hidden />
-
             <span className="loyalty-toggle-label">{active ? 'Active' : 'Off'}</span>
-
           </label>
-
         </div>
 
-        {saving ? <p className="muted-block">Saving…</p> : null}
+        {!loading ? (
+          <p className="loyalty-eligible-summary">
+            <strong>{eligibleCount}</strong> product{eligibleCount === 1 ? '' : 's'} in Inventory
+            {active ? '' : ' · turn on to start earning'}
+          </p>
+        ) : null}
 
+        <details
+          className="loyalty-details loyalty-program-details"
+          open={programDetailsOpen}
+          onToggle={(e) => setProgramDetailsOpen(e.currentTarget.open)}
+        >
+          <summary>About the program</summary>
+          <p className="muted-block loyalty-settings-desc">
+            When <strong>Active</strong>, delivered online orders can earn points on products you mark in Inventory.
+            Customers can redeem vouchers (10 points = 1 free refill code). When <strong>Off</strong>, no new points
+            are awarded and redemption is paused — existing voucher codes still work at the store.
+          </p>
+        </details>
+
+        {saving ? <p className="muted-block loyalty-saving-hint">Saving…</p> : null}
       </div>
 
 
@@ -406,24 +397,20 @@ export function LoyaltyPage() {
 
 
 
-      <div className="card card-flat">
-
-        <h2 className="inventory-section-title">How it works</h2>
-
-        <ul className="loyalty-help-list">
-
-          <li>Turn the program <strong>Active</strong> during promos or ongoing loyalty.</li>
-
-          <li>In <strong>Inventory</strong>, edit each product and check &quot;Available for loyalty points&quot; (only when active).</li>
-
-          <li>1 delivered unit of an eligible product = 1 point (online orders, not utang, not walk-in POS).</li>
-
-          <li>10 points → customer redeems a 3-day refill voucher code in the app.</li>
-
-          <li>At the store, verify the code on this page before giving the free refill.</li>
-
-        </ul>
-
+      <div className="card card-flat loyalty-help-card">
+        <details className="loyalty-details loyalty-help-details">
+          <summary>How it works</summary>
+          <ul className="loyalty-help-list">
+            <li>Turn the program <strong>Active</strong> during promos or ongoing loyalty.</li>
+            <li>
+              In <strong>Inventory</strong>, edit each product and check &quot;Available for loyalty points&quot; (only
+              when active).
+            </li>
+            <li>1 delivered unit of an eligible product = 1 point (online orders, not utang, not walk-in POS).</li>
+            <li>10 points → customer redeems a 3-day refill voucher code in the app.</li>
+            <li>At the store, verify the code on this page before giving the free refill.</li>
+          </ul>
+        </details>
       </div>
 
     </div>

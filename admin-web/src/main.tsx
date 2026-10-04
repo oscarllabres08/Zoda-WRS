@@ -7,17 +7,20 @@ import App from './App.tsx';
 import { AuthProvider } from './auth/AuthProvider';
 import { BusinessModeProvider } from './business/BusinessModeProvider';
 import { NotificationsProvider } from './notifications/NotificationsProvider';
+import { ThemeProvider } from './theme/ThemeProvider';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <AuthProvider>
-      <NotificationsProvider>
-        <BusinessModeProvider>
-          <BrowserRouter>
-            <App />
-          </BrowserRouter>
-        </BusinessModeProvider>
-      </NotificationsProvider>
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <NotificationsProvider>
+          <BusinessModeProvider>
+            <BrowserRouter>
+              <App />
+            </BrowserRouter>
+          </BusinessModeProvider>
+        </NotificationsProvider>
+      </AuthProvider>
+    </ThemeProvider>
   </StrictMode>
 );

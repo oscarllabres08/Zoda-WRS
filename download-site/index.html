@@ -419,6 +419,13 @@
         color: #dc2626;
       }
 
+      #pin-input:disabled,
+      #pin-submit:disabled,
+      #pin-toggle:disabled {
+        opacity: 0.55;
+        cursor: not-allowed;
+      }
+
       @media (min-width: 640px) {
         .shell {
           padding-top: calc(36px + var(--safe-top));
@@ -536,7 +543,7 @@
           <p id="pin-config-error" class="field-error" role="alert" hidden>
             Download site is not linked to Supabase yet. Ask the store admin to configure download-site/js/config.js.
           </p>
-          <button type="submit" class="btn btn-primary btn-block">Verify PIN</button>
+          <button type="submit" id="pin-submit" class="btn btn-primary btn-block">Verify PIN</button>
         </form>
       </div>
     </div>
@@ -551,6 +558,10 @@
           supabaseUrl: (external.supabaseUrl || '').replace(/\/$/, ''),
           supabaseAnonKey: external.supabaseAnonKey || '',
           sessionKey: 'zoda_seller_unlocked',
+          pinAttemptsKey: 'zoda_seller_pin_attempts',
+          pinLockoutKey: 'zoda_seller_pin_lockout_until',
+          maxPinAttempts: 5,
+          pinLockoutMs: 5 * 60 * 1000,
         };
 
         const yearEl = document.getElementById('year');
@@ -569,6 +580,132 @@
         const pinError = document.getElementById('pin-error');
         const pinConfigError = document.getElementById('pin-config-error');
         const pinToggle = document.getElementById('pin-toggle');
+        const pinSubmit = document.getElementById('pin-submit');
+        let pinLockoutTimer = null;
+
+        function readStorageInt(key) {
+          try {
+            return parseInt(localStorage.getItem(key) || '0', 10) || 0;
+          } catch {
+            return 0;
+          }
+        }
+
+        function writeStorage(key, value) {
+          try {
+            localStorage.setItem(key, String(value));
+          } catch {
+            /* ignore */
+          }
+        }
+
+        function removeStorage(key) {
+          try {
+            localStorage.removeItem(key);
+          } catch {
+            /* ignore */
+          }
+        }
+
+        function getPinAttempts() {
+          return readStorageInt(cfg.pinAttemptsKey);
+        }
+
+        function getLockoutUntil() {
+          return readStorageInt(cfg.pinLockoutKey);
+        }
+
+        function isPinLockedOut() {
+          const until = getLockoutUntil();
+          if (!until) return false;
+          if (until <= Date.now()) {
+            removeStorage(cfg.pinLockoutKey);
+            removeStorage(cfg.pinAttemptsKey);
+            return false;
+          }
+          return true;
+        }
+
+        function lockoutMsRemaining() {
+          return Math.max(0, getLockoutUntil() - Date.now());
+        }
+
+        function formatLockoutCountdown(ms) {
+          const totalSec = Math.ceil(ms / 1000);
+          const min = Math.floor(totalSec / 60);
+          const sec = totalSec % 60;
+          return min + ':' + String(sec).padStart(2, '0');
+        }
+
+        function clearPinAttempts() {
+          removeStorage(cfg.pinAttemptsKey);
+          removeStorage(cfg.pinLockoutKey);
+        }
+
+        function recordFailedPinAttempt() {
+          const next = getPinAttempts() + 1;
+          if (next >= cfg.maxPinAttempts) {
+            writeStorage(cfg.pinLockoutKey, Date.now() + cfg.pinLockoutMs);
+            removeStorage(cfg.pinAttemptsKey);
+            return { locked: true, remaining: 0 };
+          }
+          writeStorage(cfg.pinAttemptsKey, next);
+          return { locked: false, remaining: cfg.maxPinAttempts - next };
+        }
+
+        function stopPinLockoutTimer() {
+          if (pinLockoutTimer) {
+            window.clearInterval(pinLockoutTimer);
+            pinLockoutTimer = null;
+          }
+        }
+
+        function setPinFormDisabled(disabled) {
+          if (pinInput) pinInput.disabled = disabled;
+          if (pinSubmit) pinSubmit.disabled = disabled;
+          if (pinToggle) pinToggle.disabled = disabled;
+        }
+
+        function syncPinFormState() {
+          stopPinLockoutTimer();
+          if (pinConfigError) pinConfigError.hidden = pinVerifyConfigured();
+
+          if (isPinLockedOut()) {
+            setPinFormDisabled(true);
+            if (pinError) {
+              pinError.hidden = false;
+              pinError.textContent =
+                'Too many incorrect attempts. Try again in ' + formatLockoutCountdown(lockoutMsRemaining()) + '.';
+            }
+            pinLockoutTimer = window.setInterval(function () {
+              if (!isPinLockedOut()) {
+                stopPinLockoutTimer();
+                setPinFormDisabled(false);
+                if (pinError) {
+                  pinError.hidden = true;
+                  pinError.textContent = 'Incorrect PIN. Try again.';
+                }
+                if (pinInput) pinInput.focus();
+                return;
+              }
+              if (pinError) {
+                pinError.textContent =
+                  'Too many incorrect attempts. Try again in ' + formatLockoutCountdown(lockoutMsRemaining()) + '.';
+              }
+            }, 1000);
+            return;
+          }
+
+          setPinFormDisabled(false);
+          const used = getPinAttempts();
+          if (used > 0 && pinError) {
+            pinError.hidden = false;
+            pinError.textContent =
+              'Incorrect PIN. ' + (cfg.maxPinAttempts - used) + ' attempt' + (cfg.maxPinAttempts - used === 1 ? '' : 's') + ' remaining.';
+          } else if (pinError) {
+            pinError.hidden = true;
+          }
+        }
 
         function pinVerifyConfigured() {
           return !!(cfg.supabaseUrl && cfg.supabaseAnonKey);
@@ -660,10 +797,9 @@
           if (!modal) return;
           modal.hidden = false;
           document.body.classList.add('modal-open');
-          if (pinError) pinError.hidden = true;
-          if (pinConfigError) pinConfigError.hidden = pinVerifyConfigured();
-          if (pinInput) {
-            pinInput.value = '';
+          if (pinInput) pinInput.value = '';
+          syncPinFormState();
+          if (pinInput && !pinInput.disabled) {
             window.setTimeout(function () {
               pinInput.focus();
             }, 50);
@@ -674,6 +810,7 @@
           if (!modal) return;
           modal.hidden = true;
           document.body.classList.remove('modal-open');
+          stopPinLockoutTimer();
         }
 
         function isRemoteApkUrl(url) {
@@ -725,6 +862,10 @@
         if (pinForm) {
           pinForm.addEventListener('submit', function (e) {
             e.preventDefault();
+            if (isPinLockedOut()) {
+              syncPinFormState();
+              return;
+            }
             const entered = (pinInput && pinInput.value ? pinInput.value : '').trim();
             if (!pinVerifyConfigured()) {
               if (pinConfigError) pinConfigError.hidden = false;
@@ -732,8 +873,11 @@
               return;
             }
             if (pinConfigError) pinConfigError.hidden = true;
+            if (pinSubmit) pinSubmit.disabled = true;
             void verifySellerPin(entered).then(function (result) {
+              if (pinSubmit && !isPinLockedOut()) pinSubmit.disabled = false;
               if (result.ok) {
+                clearPinAttempts();
                 setUnlocked(true);
                 closeModal();
                 return;
@@ -750,11 +894,9 @@
                 if (pinError) pinError.hidden = true;
                 return;
               }
-              if (pinError) {
-                pinError.hidden = false;
-                pinError.textContent = 'Incorrect PIN. Try again.';
-              }
-              if (pinInput) {
+              const attempt = recordFailedPinAttempt();
+              syncPinFormState();
+              if (!attempt.locked && pinInput) {
                 pinInput.select();
                 pinInput.focus();
               }

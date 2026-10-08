@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 
 
@@ -91,6 +91,22 @@ export function SalesAnalyticsPage() {
   const [selectedSale, setSelectedSale] = useState<RecentSaleRow | null>(null);
 
   const [recentVisible, setRecentVisible] = useState(RECENT_SALES_PAGE);
+  const dateInputRef = useRef<HTMLInputElement>(null);
+
+  const openDatePicker = useCallback(() => {
+    const input = dateInputRef.current;
+    if (!input) return;
+    if (typeof input.showPicker === 'function') {
+      try {
+        input.showPicker();
+        return;
+      } catch {
+        /* fallback below */
+      }
+    }
+    input.focus();
+    input.click();
+  }, []);
 
   const { year: filterYear, month: filterMonth, day: filterDay } = useMemo(
 
@@ -240,12 +256,25 @@ export function SalesAnalyticsPage() {
                 </button>
               ))}
             </div>
-            <label className="sales-date-picker-btn sales-date-picker-btn--inline" title={pickerLabel}>
+            <label
+              className="sales-date-picker-btn sales-date-picker-btn--inline"
+              title={pickerLabel}
+              htmlFor="sales-display-date"
+              onClick={() => openDatePicker()}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  openDatePicker();
+                }
+              }}
+            >
               <span className="sales-date-picker-icon" aria-hidden>
                 📅
               </span>
               <strong className="sales-date-picker-value">{pickerLabel}</strong>
               <input
+                id="sales-display-date"
+                ref={dateInputRef}
                 type="date"
                 className="sales-date-input-overlay"
                 value={selectedDate}
@@ -611,3 +640,4 @@ function KpiCard({
 
 }
 
+export default SalesAnalyticsPage;

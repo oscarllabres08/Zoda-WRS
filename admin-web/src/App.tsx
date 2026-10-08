@@ -9,7 +9,7 @@ import { DashboardPage } from './pages/DashboardPage';
 import { InventoryPage } from './pages/InventoryPage';
 import { LoyaltyPage } from './pages/LoyaltyPage';
 import { PosPage } from './pages/PosPage';
-import { SalesPage } from './pages/SalesPage';
+import { SalesAnalyticsPage as SalesPage } from './pages/SalesAnalyticsPage';
 import { StaffPage } from './pages/StaffPage';
 import { LaundryDashboardPage } from './pages/LaundryDashboardPage';
 import { LaundryExpensesPage } from './pages/LaundryExpensesPage';

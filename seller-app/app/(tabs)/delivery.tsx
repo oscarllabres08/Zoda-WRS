@@ -37,6 +37,7 @@ type OrderRow = {
   latitude: number | null;
   longitude: number | null;
   created_at: string;
+  updated_at: string;
   payment_method?: string | null;
   payment_settled?: boolean | null;
   delivery_fee?: number | null;
@@ -80,6 +81,37 @@ function isDelivered(status: string) {
   return status === 'delivered';
 }
 
+function isSameLocalDay(iso: string, day: Date) {
+  const d = new Date(iso);
+  return d.getFullYear() === day.getFullYear() && d.getMonth() === day.getMonth() && d.getDate() === day.getDate();
+}
+
+function isDeliveredToday(order: OrderRow, today = new Date()) {
+  return isDelivered(order.status) && isSameLocalDay(order.updated_at, today);
+}
+
+function localDayKey(iso: string) {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+}
+
+function formatDeliveredDayLabel(iso: string, now = new Date()) {
+  if (isSameLocalDay(iso, now)) return 'Today';
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (isSameLocalDay(iso, yesterday)) return 'Yesterday';
+  return new Date(iso).toLocaleDateString(undefined, {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
+
+function sortDeliveredNewestFirst(a: OrderRow, b: OrderRow) {
+  return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+}
+
 export default function DeliveryScreen() {
   const router = useRouter();
   const { user, businessId } = useAuth();
@@ -90,7 +122,8 @@ export default function DeliveryScreen() {
   const [tab, setTab] = useState<DeliveryTab>('delivered');
   const [query, setQuery] = useState('');
   const [payFilter, setPayFilter] = useState<PayFilter>('all');
-  const [deliveredPage, setDeliveredPage] = useState(0);
+  const [deliveredTodayLimit, setDeliveredTodayLimit] = useState(DELIVERED_PAGE_SIZE);
+  const [deliveredPastLimit, setDeliveredPastLimit] = useState(0);
   const [deviceCoords, setDeviceCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [storeCoords, setStoreCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [avatarPathByCustomerId, setAvatarPathByCustomerId] = useState<Record<string, string | null>>({});
@@ -111,7 +144,7 @@ export default function DeliveryScreen() {
     const { data, error: err } = await supabase
       .from('orders')
       .select(
-        'id,customer_id,customer_name,contact_number,delivery_address,landmark,status,latitude,longitude,created_at,payment_method,payment_settled,delivery_fee,delivery_distance_meters,order_items(product_name,unit_price,quantity)'
+        'id,customer_id,customer_name,contact_number,delivery_address,landmark,status,latitude,longitude,created_at,updated_at,payment_method,payment_settled,delivery_fee,delivery_distance_meters,order_items(product_name,unit_price,quantity)'
       )
       .eq('seller_id', businessId)
       .neq('status', 'cancelled')
@@ -200,13 +233,24 @@ export default function DeliveryScreen() {
 
   const distanceReference = deviceCoords ?? storeCoords;
 
+  const deliveredToday = useMemo(() => orders.filter((o) => isDeliveredToday(o)), [orders]);
+
   const counts = useMemo(
     () => ({
       pending: orders.filter((o) => isPending(o.status)).length,
       ongoing: orders.filter((o) => isOngoing(o.status)).length,
-      delivered: orders.filter((o) => isDelivered(o.status)).length,
+      delivered: deliveredToday.length,
     }),
-    [orders]
+    [orders, deliveredToday.length]
+  );
+
+  const payCounts = useMemo(
+    () => ({
+      all: deliveredToday.length,
+      paid: deliveredToday.filter((o) => o.payment_settled === true).length,
+      unpaid: deliveredToday.filter((o) => o.payment_settled !== true).length,
+    }),
+    [deliveredToday]
   );
 
   const filtered = useMemo(() => {
@@ -233,6 +277,28 @@ export default function DeliveryScreen() {
     });
   }, [orders, tab, query, payFilter]);
 
+  const deliveredTodayList = useMemo(() => {
+    if (tab !== 'delivered') return [];
+    return filtered.filter((o) => isDeliveredToday(o)).sort(sortDeliveredNewestFirst);
+  }, [filtered, tab]);
+
+  const deliveredPastList = useMemo(() => {
+    if (tab !== 'delivered') return [];
+    return filtered.filter((o) => !isDeliveredToday(o)).sort(sortDeliveredNewestFirst);
+  }, [filtered, tab]);
+
+  const deliveredVisibleItems = useMemo(() => {
+    if (tab !== 'delivered') return [];
+    const visibleToday = deliveredTodayList.slice(0, deliveredTodayLimit);
+    const visiblePast = deliveredPastLimit > 0 ? deliveredPastList.slice(0, deliveredPastLimit) : [];
+    return [...visibleToday, ...visiblePast];
+  }, [tab, deliveredTodayList, deliveredPastList, deliveredTodayLimit, deliveredPastLimit]);
+
+  const canShowMoreToday = deliveredTodayList.length > deliveredTodayLimit;
+  const canShowMorePast = deliveredPastList.length > deliveredPastLimit;
+  const deliveredHasMore =
+    canShowMoreToday || (deliveredPastList.length > 0 && (deliveredPastLimit === 0 || canShowMorePast));
+
   const sorted = useMemo(() => {
     const list = [...filtered];
     if (tab === 'ongoing' && deviceCoords) {
@@ -254,19 +320,24 @@ export default function DeliveryScreen() {
   }, [filtered, tab, deviceCoords]);
 
   useEffect(() => {
-    setDeliveredPage(0);
+    setDeliveredTodayLimit(DELIVERED_PAGE_SIZE);
+    setDeliveredPastLimit(0);
   }, [tab, payFilter, query]);
 
-  const deliveredPageCount = useMemo(() => {
-    if (tab !== 'delivered') return 0;
-    return Math.max(1, Math.ceil(sorted.length / DELIVERED_PAGE_SIZE));
-  }, [tab, sorted.length]);
-
-  const deliveredPageItems = useMemo(() => {
-    if (tab !== 'delivered') return [];
-    const start = deliveredPage * DELIVERED_PAGE_SIZE;
-    return sorted.slice(start, start + DELIVERED_PAGE_SIZE);
-  }, [tab, sorted, deliveredPage]);
+  const showMoreDelivered = useCallback(() => {
+    if (canShowMoreToday) {
+      setDeliveredTodayLimit((n) => n + DELIVERED_PAGE_SIZE);
+      return;
+    }
+    if (deliveredPastList.length === 0) return;
+    if (deliveredPastLimit === 0) {
+      setDeliveredPastLimit(DELIVERED_PAGE_SIZE);
+      return;
+    }
+    if (canShowMorePast) {
+      setDeliveredPastLimit((n) => n + DELIVERED_PAGE_SIZE);
+    }
+  }, [canShowMorePast, canShowMoreToday, deliveredPastLimit, deliveredPastList.length]);
 
   return (
     <Screen>
@@ -322,6 +393,17 @@ export default function DeliveryScreen() {
           />
         </View>
 
+        {tab === 'delivered' ? (
+          <View style={{ gap: 4 }}>
+            <Text weight="extrabold" style={{ fontSize: 18, letterSpacing: 0.6, color: theme.colors.text }}>
+              TODAY&apos;S DELIVERY
+            </Text>
+            <Text variant="muted" weight="semibold" style={{ fontSize: 13 }}>
+              {counts.delivered} delivered · {payCounts.paid} paid · {payCounts.unpaid} unpaid
+            </Text>
+          </View>
+        ) : null}
+
         <View
           style={{
             flexDirection: 'row',
@@ -347,21 +429,27 @@ export default function DeliveryScreen() {
 
         {tab === 'delivered' ? (
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-            {(['all', 'paid', 'unpaid'] as const).map((key) => (
+            {(
+              [
+                { key: 'all' as const, label: `All (${payCounts.all})` },
+                { key: 'paid' as const, label: `${payCounts.paid} paid` },
+                { key: 'unpaid' as const, label: `${payCounts.unpaid} unpaid` },
+              ] as const
+            ).map(({ key, label }) => (
               <Pressable
                 key={key}
                 onPress={() => setPayFilter(key)}
                 style={{
                   paddingHorizontal: 14,
                   paddingVertical: 8,
-                  borderRadius: 999,
+                  borderRadius: 8,
                   borderWidth: 1.5,
                   borderColor: payFilter === key ? theme.colors.primary : theme.colors.border,
                   backgroundColor: payFilter === key ? 'rgba(18,101,214,0.1)' : '#FFF',
                 }}
               >
                 <Text weight="extrabold" style={{ fontSize: 13, color: payFilter === key ? theme.colors.primary : theme.colors.muted }}>
-                  {key === 'all' ? 'All' : key === 'paid' ? 'Paid' : 'Unpaid'}
+                  {label}
                 </Text>
               </Pressable>
             ))}
@@ -375,20 +463,27 @@ export default function DeliveryScreen() {
         ) : null}
         {loading ? <Text variant="muted">Loading…</Text> : null}
 
-        {!loading && sorted.length === 0 ? (
+        {!loading && tab === 'delivered' && deliveredTodayList.length === 0 && deliveredVisibleItems.length === 0 ? (
           <Card>
-            <Text weight="extrabold">
-              {tab === 'delivered' ? 'No delivered orders yet' : tab === 'pending' ? 'No pending deliveries' : 'No on-going deliveries'}
-            </Text>
+            <Text weight="extrabold">No deliveries today</Text>
             <Text variant="muted" style={{ marginTop: 6 }}>
-              {tab === 'delivered'
-                ? 'Completed orders appear here after you mark them delivered in Orders.'
-                : 'Orders move here as their status updates.'}
+              {deliveredPastList.length > 0
+                ? 'Tap Show more to view deliveries from previous days.'
+                : 'Orders marked delivered today will appear here.'}
             </Text>
           </Card>
         ) : null}
 
-        {tab === 'delivered' && sorted.length > 0 ? (
+        {!loading && tab !== 'delivered' && sorted.length === 0 ? (
+          <Card>
+            <Text weight="extrabold">{tab === 'pending' ? 'No pending deliveries' : 'No on-going deliveries'}</Text>
+            <Text variant="muted" style={{ marginTop: 6 }}>
+              Orders move here as their status updates.
+            </Text>
+          </Card>
+        ) : null}
+
+        {tab === 'delivered' && deliveredVisibleItems.length > 0 ? (
           <>
             <View
               style={{
@@ -399,28 +494,53 @@ export default function DeliveryScreen() {
                 overflow: 'hidden',
               }}
             >
-              {deliveredPageItems.map((order, index) => (
-                <Animated.View key={order.id} entering={FadeInDown.delay(index * 24).duration(200)}>
-                  <DeliveredOrderRow
-                    order={order}
-                    avatarUrl={publicWrsAssetUrl(avatarPathByCustomerId[order.customer_id])}
-                    onOpen={() => openOrder(order.id)}
-                    isLast={index === deliveredPageItems.length - 1}
-                  />
-                </Animated.View>
-              ))}
+              {deliveredVisibleItems.map((order, index) => {
+                const dayKey = localDayKey(order.updated_at);
+                const prevDayKey = index > 0 ? localDayKey(deliveredVisibleItems[index - 1]!.updated_at) : null;
+                const showDayHeader = dayKey !== prevDayKey && !isDeliveredToday(order);
+                const isLast = index === deliveredVisibleItems.length - 1;
+
+                return (
+                  <Animated.View key={order.id} entering={FadeInDown.delay(index * 24).duration(200)}>
+                    {showDayHeader ? <DeliveredDayHeader label={formatDeliveredDayLabel(order.updated_at)} /> : null}
+                    <DeliveredOrderRow
+                      order={order}
+                      avatarUrl={publicWrsAssetUrl(avatarPathByCustomerId[order.customer_id])}
+                      onOpen={() => openOrder(order.id)}
+                      isLast={isLast}
+                    />
+                  </Animated.View>
+                );
+              })}
             </View>
-            {sorted.length > DELIVERED_PAGE_SIZE ? (
-              <DeliveredListPagination
-                page={deliveredPage}
-                pageCount={deliveredPageCount}
-                total={sorted.length}
-                pageSize={DELIVERED_PAGE_SIZE}
-                onPrev={() => setDeliveredPage((p) => Math.max(0, p - 1))}
-                onNext={() => setDeliveredPage((p) => Math.min(deliveredPageCount - 1, p + 1))}
+            {deliveredHasMore ? (
+              <DeliveredShowMore
+                shown={deliveredVisibleItems.length}
+                totalToday={deliveredTodayList.length}
+                showingPast={deliveredPastLimit > 0}
+                includePastNext={!canShowMoreToday && deliveredPastLimit === 0 && deliveredPastList.length > 0}
+                onPress={showMoreDelivered}
               />
             ) : null}
           </>
+        ) : null}
+
+        {tab === 'delivered' && !loading && deliveredTodayList.length === 0 && deliveredPastList.length > 0 && deliveredPastLimit === 0 ? (
+          <Pressable
+            onPress={showMoreDelivered}
+            style={{
+              paddingVertical: 12,
+              borderRadius: 8,
+              borderWidth: 1.5,
+              borderColor: theme.colors.primary,
+              backgroundColor: 'rgba(18,101,214,0.1)',
+              alignItems: 'center',
+            }}
+          >
+            <Text weight="extrabold" style={{ color: theme.colors.primary }}>
+              Show older deliveries
+            </Text>
+          </Pressable>
         ) : null}
 
         {sorted.map((order, index) =>
@@ -444,73 +564,63 @@ export default function DeliveryScreen() {
   );
 }
 
-function DeliveredListPagination({
-  page,
-  pageCount,
-  total,
-  pageSize,
-  onPrev,
-  onNext,
+function DeliveredDayHeader({ label }: { label: string }) {
+  return (
+    <View
+      style={{
+        paddingHorizontal: 14,
+        paddingVertical: 8,
+        backgroundColor: '#EEF3FA',
+        borderBottomWidth: 1,
+        borderBottomColor: theme.colors.border,
+      }}
+    >
+      <Text weight="extrabold" style={{ fontSize: 12, color: theme.colors.muted, letterSpacing: 0.4 }}>
+        {label}
+      </Text>
+    </View>
+  );
+}
+
+function DeliveredShowMore({
+  shown,
+  totalToday,
+  showingPast,
+  includePastNext,
+  onPress,
 }: {
-  page: number;
-  pageCount: number;
-  total: number;
-  pageSize: number;
-  onPrev: () => void;
-  onNext: () => void;
+  shown: number;
+  totalToday: number;
+  showingPast: boolean;
+  includePastNext: boolean;
+  onPress: () => void;
 }) {
-  const from = page * pageSize + 1;
-  const to = Math.min(total, (page + 1) * pageSize);
   const p = theme.colors.primary;
-  const canPrev = page > 0;
-  const canNext = page < pageCount - 1;
+  const todayShown = Math.min(shown, totalToday);
+  const caption = showingPast
+    ? `Showing ${shown} deliveries (${totalToday} today · ${shown - todayShown} older)`
+    : `Showing ${todayShown} of ${totalToday} today${includePastNext ? ' · older deliveries next' : ''}`;
 
   return (
-    <View style={{ gap: 10 }}>
+    <View style={{ gap: 8 }}>
       <Text variant="muted" weight="semibold" style={{ textAlign: 'center', fontSize: 13 }}>
-        Showing {from}–{to} of {total}
+        {caption}
       </Text>
-      <View style={{ flexDirection: 'row', gap: 10 }}>
-        <Pressable
-          onPress={onPrev}
-          disabled={!canPrev}
-          style={{
-            flex: 1,
-            paddingVertical: 12,
-            borderRadius: 14,
-            borderWidth: 1.5,
-            borderColor: canPrev ? p : theme.colors.border,
-            backgroundColor: canPrev ? '#FFFFFF' : 'rgba(106,122,149,0.06)',
-            alignItems: 'center',
-            opacity: canPrev ? 1 : 0.5,
-          }}
-        >
-          <Text weight="extrabold" style={{ color: canPrev ? p : theme.colors.muted }}>
-            Previous
-          </Text>
-        </Pressable>
-        <Pressable
-          onPress={onNext}
-          disabled={!canNext}
-          style={{
-            flex: 1,
-            paddingVertical: 12,
-            borderRadius: 14,
-            borderWidth: 1.5,
-            borderColor: canNext ? p : theme.colors.border,
-            backgroundColor: canNext ? 'rgba(18,101,214,0.1)' : 'rgba(106,122,149,0.06)',
-            alignItems: 'center',
-            opacity: canNext ? 1 : 0.5,
-          }}
-        >
-          <Text weight="extrabold" style={{ color: canNext ? p : theme.colors.muted }}>
-            Show more
-          </Text>
-        </Pressable>
-      </View>
-      <Text variant="muted" weight="bold" style={{ textAlign: 'center', fontSize: 12 }}>
-        Page {page + 1} of {pageCount}
-      </Text>
+      <Pressable
+        onPress={onPress}
+        style={{
+          paddingVertical: 12,
+          borderRadius: 8,
+          borderWidth: 1.5,
+          borderColor: p,
+          backgroundColor: 'rgba(18,101,214,0.1)',
+          alignItems: 'center',
+        }}
+      >
+        <Text weight="extrabold" style={{ color: p }}>
+          {includePastNext ? 'Show older deliveries' : 'Show more'}
+        </Text>
+      </Pressable>
     </View>
   );
 }

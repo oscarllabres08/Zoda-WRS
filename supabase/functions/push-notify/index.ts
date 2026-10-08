@@ -154,26 +154,102 @@ async function supabaseSelectProfileNotifPrefs(recipientId: string) {
   };
 }
 
-async function supabaseSelectPushTokens(recipientId: string) {
-  // Supabase reserves env names that start with SUPABASE_, so we prefer SB_*.
+type PushTokenRow = { token: string; platform: string; app: string; updated_at?: string };
+
+function supabaseHeaders(serviceKey: string, extra: Record<string, string> = {}) {
+  return {
+    apikey: serviceKey,
+    authorization: `Bearer ${serviceKey}`,
+    ...extra,
+  };
+}
+
+async function supabaseSelectPushTokens(recipientId: string, app: "seller" | "customer") {
   const supabaseUrl = getEnvAny(["SB_URL", "SUPABASE_URL"]);
   const serviceKey = getEnvAny(["SB_SERVICE_ROLE_KEY", "SUPABASE_SERVICE_ROLE_KEY"]);
 
   const url = new URL("/rest/v1/push_tokens", supabaseUrl);
-  url.searchParams.set("select", "token,platform,app");
+  url.searchParams.set("select", "token,platform,app,updated_at");
   url.searchParams.set("user_id", `eq.${recipientId}`);
+  url.searchParams.set("app", `eq.${app}`);
   url.searchParams.set("platform", "eq.android");
-  url.searchParams.set("limit", "50");
+  url.searchParams.set("order", "updated_at.desc");
+  url.searchParams.set("limit", "20");
 
   const res = await fetch(url.toString(), {
-    headers: {
-      apikey: serviceKey,
-      authorization: `Bearer ${serviceKey}`,
-    },
+    headers: supabaseHeaders(serviceKey),
   });
   const data = await res.json().catch(() => []);
   if (!res.ok) throw new Error(`Supabase tokens query failed: ${res.status} ${JSON.stringify(data)}`);
-  return (Array.isArray(data) ? data : []) as { token: string; platform: string; app: string }[];
+  return (Array.isArray(data) ? data : []) as PushTokenRow[];
+}
+
+/** One send per unique FCM token string (stale duplicate rows are common). */
+function dedupePushTokensByValue(tokens: PushTokenRow[]): PushTokenRow[] {
+  const byToken = new Map<string, PushTokenRow>();
+  for (const row of tokens) {
+    const token = String(row.token ?? "").trim();
+    if (!token) continue;
+    const prev = byToken.get(token);
+    if (!prev) {
+      byToken.set(token, row);
+      continue;
+    }
+    const prevAt = prev.updated_at ?? "";
+    const nextAt = row.updated_at ?? "";
+    if (nextAt > prevAt) byToken.set(token, row);
+  }
+  return [...byToken.values()];
+}
+
+function buildPushDedupeKey(kind: string, orderId: string, notificationId: string, fcmToken: string): string {
+  if (orderId && kind) return `${kind}:${orderId}:${fcmToken}`;
+  if (notificationId) return `${notificationId}:${fcmToken}`;
+  return `${kind || "alert"}:${fcmToken}:${Date.now()}`;
+}
+
+function buildCollapseTag(kind: string, orderId: string, notificationId: string): string {
+  if (orderId && kind) return `${kind}:${orderId}`;
+  if (notificationId) return notificationId;
+  return kind || "wrs_alert";
+}
+
+/** Skip if this order/notification was already pushed to this device token. */
+async function claimPushDelivery(dedupeKey: string): Promise<boolean> {
+  try {
+    const supabaseUrl = getEnvAny(["SB_URL", "SUPABASE_URL"]);
+    const serviceKey = getEnvAny(["SB_SERVICE_ROLE_KEY", "SUPABASE_SERVICE_ROLE_KEY"]);
+
+    const res = await fetch(new URL("/rest/v1/push_deliveries", supabaseUrl).toString(), {
+      method: "POST",
+      headers: supabaseHeaders(serviceKey, {
+        "content-type": "application/json",
+        Prefer: "resolution=ignore-duplicates,return=representation",
+      }),
+      body: JSON.stringify({ dedupe_key: dedupeKey }),
+    });
+
+    if (res.status === 404) return true;
+
+    const body = await res.json().catch(() => null);
+    if (res.status === 201) {
+      return !(Array.isArray(body) && body.length === 0);
+    }
+    if (res.status === 409) return false;
+
+    const checkUrl = new URL("/rest/v1/push_deliveries", supabaseUrl);
+    checkUrl.searchParams.set("select", "dedupe_key");
+    checkUrl.searchParams.set("dedupe_key", `eq.${dedupeKey}`);
+    checkUrl.searchParams.set("limit", "1");
+
+    const check = await fetch(checkUrl.toString(), { headers: supabaseHeaders(serviceKey) });
+    const rows = await check.json().catch(() => []);
+    if (Array.isArray(rows) && rows.length > 0) return false;
+
+    return true;
+  } catch {
+    return true;
+  }
 }
 
 function inferTargetApp(payload: WebhookPayload): "seller" | "customer" | null {
@@ -202,6 +278,7 @@ async function sendFcmMessage({
   body,
   data,
   soundEnabled,
+  collapseTag,
 }: {
   fcmProjectId: string;
   accessToken: string;
@@ -210,11 +287,17 @@ async function sendFcmMessage({
   body: string;
   data: Record<string, string>;
   soundEnabled: boolean;
+  collapseTag: string;
 }) {
   const url = `https://fcm.googleapis.com/v1/projects/${encodeURIComponent(fcmProjectId)}/messages:send`;
   const channelId = soundEnabled ? FCM_CHANNEL_SOUND : FCM_CHANNEL_SILENT;
-  const androidNotification: Record<string, string> = {
+  const androidNotification: Record<string, string | boolean> = {
     channel_id: channelId,
+    tag: collapseTag,
+    notification_priority: "PRIORITY_MAX",
+    visibility: "PUBLIC",
+    default_vibrate_timings: true,
+    default_sound: soundEnabled,
   };
   if (soundEnabled) {
     androidNotification.sound = FCM_SOUND_RAW;
@@ -235,14 +318,11 @@ async function sendFcmMessage({
           priority: "HIGH",
           ttl: "86400s",
           direct_boot_ok: true,
+          collapse_key: collapseTag,
           notification: {
             ...androidNotification,
             title,
             body,
-            notification_priority: "PRIORITY_MAX",
-            visibility: "PUBLIC",
-            default_vibrate_timings: true,
-            default_sound: soundEnabled,
           },
         },
       },
@@ -275,8 +355,8 @@ Deno.serve(async (req) => {
       return json({ ok: true, skipped: true, reason: "missing_target_app", kind });
     }
 
-    const tokensAll = await supabaseSelectPushTokens(recipientId);
-    const tokens = tokensAll.filter((t) => t.app === targetApp);
+    const tokensAll = await supabaseSelectPushTokens(recipientId, targetApp);
+    const tokens = dedupePushTokensByValue(tokensAll);
     if (!tokens.length) return json({ ok: true, skipped: true, reason: "no_android_tokens" });
 
     const fcmProjectId = getEnv("FCM_PROJECT_ID");
@@ -285,9 +365,12 @@ Deno.serve(async (req) => {
     const notifPrefs = await supabaseSelectProfileNotifPrefs(recipientId);
     const soundEnabled = notifPrefs.notificationsEnabled && notifPrefs.soundEnabled;
 
+    const notificationId = String(payload?.notification_id ?? "");
+    const collapseTag = buildCollapseTag(kind, orderId, notificationId);
+
     const data: Record<string, string> = {
       recipientId,
-      notificationId: String(payload?.notification_id ?? ""),
+      notificationId,
       kind,
       orderId,
       app: targetApp,
@@ -298,9 +381,15 @@ Deno.serve(async (req) => {
       if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") data[k] = String(v);
     }
 
-    const results: Array<{ token: string; ok: boolean; error?: string }> = [];
+    const results: Array<{ token: string; ok: boolean; skipped?: boolean; error?: string }> = [];
     for (const t of tokens) {
       try {
+        const dedupeKey = buildPushDedupeKey(kind, orderId, notificationId, t.token);
+        const claimed = await claimPushDelivery(dedupeKey);
+        if (!claimed) {
+          results.push({ token: t.token, ok: true, skipped: true });
+          continue;
+        }
         await sendFcmMessage({
           fcmProjectId,
           accessToken,
@@ -309,6 +398,7 @@ Deno.serve(async (req) => {
           body,
           data,
           soundEnabled,
+          collapseTag,
         });
         results.push({ token: t.token, ok: true });
       } catch (e) {
@@ -316,7 +406,13 @@ Deno.serve(async (req) => {
       }
     }
 
-    return json({ ok: true, sent: results.filter((r) => r.ok).length, results });
+    return json({
+      ok: true,
+      sent: results.filter((r) => r.ok && !r.skipped).length,
+      skipped: results.filter((r) => r.skipped).length,
+      tokenCount: tokens.length,
+      results,
+    });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error("[push-notify]", msg);

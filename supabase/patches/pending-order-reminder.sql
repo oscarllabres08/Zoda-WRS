@@ -37,12 +37,14 @@ begin
     return false;
   end if;
 
+  -- Allow a new reminder every 30 minutes (matches banner snooze / re-popup).
   if exists (
     select 1
     from public.notifications n
     where n.order_id = p_order_id
       and n.kind = 'pending_order_reminder'
       and n.recipient_id = v_uid
+      and n.created_at > now() - interval '30 minutes'
   ) then
     return false;
   end if;

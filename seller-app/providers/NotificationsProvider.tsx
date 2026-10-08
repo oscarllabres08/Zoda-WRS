@@ -1,13 +1,8 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import * as Notifications from 'expo-notifications';
-import { AppState, type AppStateStatus, Platform } from 'react-native';
+import { AppState, type AppStateStatus } from 'react-native';
 
-import {
-  NOTIF_CHANNEL_SILENT,
-  NOTIF_CHANNEL_SOUND,
-  ensureAndroidNotificationChannels,
-  notificationContentSound,
-} from '../lib/notificationChannels';
+import { ensureAndroidNotificationChannels } from '../lib/notificationChannels';
 import { registerSellerPushToken } from '../lib/registerPushToken';
 import { setNotificationRuntimePrefs } from '../lib/notificationRuntime';
 import { supabase } from '../lib/supabase';
@@ -27,6 +22,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   const [unreadCount, setUnreadCount] = useState(0);
   const [toast, setToast] = useState<Ctx['toast']>(null);
   const lastPopupIdRef = useRef<string | null>(null);
+  const lastOrderAlertRef = useRef<{ orderId: string; kind: string; at: number } | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prefsRef = useRef<{ notificationsEnabled: boolean; soundEnabled: boolean }>({
     notificationsEnabled: true,
@@ -154,11 +150,23 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
 
             const rowData =
               n.data && typeof n.data === 'object' && !Array.isArray(n.data) ? (n.data as Record<string, unknown>) : {};
+            const orderId = (n.order_id as string | undefined) ?? (rowData.orderId as string | undefined);
+            const kind = String(n.kind ?? rowData.kind ?? '');
             const toastData = {
-              orderId: (n.order_id as string | undefined) ?? (rowData.orderId as string | undefined),
-              kind: String(n.kind ?? rowData.kind ?? ''),
+              orderId,
+              kind,
               pendingUserId: (rowData.pending_user_id as string | undefined) ?? (rowData.pendingUserId as string | undefined),
             } as Record<string, unknown>;
+
+            if (orderId && (kind === 'new_order' || kind === 'order_activity')) {
+              const now = Date.now();
+              const prev = lastOrderAlertRef.current;
+              if (prev && prev.orderId === orderId && prev.kind === kind && now - prev.at < 60_000) {
+                void refresh();
+                return;
+              }
+              lastOrderAlertRef.current = { orderId, kind, at: now };
+            }
 
             if (prefsRef.current.notificationsEnabled) {
               setToast({
@@ -168,26 +176,8 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
                 data: toastData,
               });
               if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-              const kind = String(toastData.kind ?? n.kind ?? '');
               const toastMs = kind === 'pending_order_reminder' ? 6000 : 3000;
               toastTimerRef.current = setTimeout(() => setToast(null), toastMs);
-
-              try {
-                const soundOn = prefsRef.current.soundEnabled;
-                const channelId = soundOn ? NOTIF_CHANNEL_SOUND : NOTIF_CHANNEL_SILENT;
-                await Notifications.scheduleNotificationAsync({
-                  content: {
-                    title: String(n.title ?? 'Notification'),
-                    body: String(n.body ?? ''),
-                    sound: notificationContentSound(soundOn),
-                    data: toastData as Record<string, unknown>,
-                    ...(Platform.OS === 'android' ? { channelId } : {}),
-                  },
-                  trigger: null,
-                });
-              } catch (e) {
-                if (__DEV__) console.warn('[push] scheduleNotificationAsync:', e instanceof Error ? e.message : e);
-              }
             }
           }
           void refresh();

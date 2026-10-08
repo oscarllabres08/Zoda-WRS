@@ -482,6 +482,10 @@
   on public.push_tokens for delete
   using (auth.uid() = user_id);
 
+  create unique index if not exists notifications_new_order_dedup_idx
+    on public.notifications (order_id, recipient_id)
+    where kind = 'new_order';
+
   -- Create notification when customer places an order (seller inbox).
   -- Runs after the first order_items row is inserted so line items exist (client inserts order, then items).
   create or replace function public.notify_seller_new_order()
@@ -496,21 +500,24 @@
     v_item_count int;
     v_body text;
   begin
+    if new.product_id is null and coalesce(new.product_name, '') ilike 'delivery%' then
+      return new;
+    end if;
+
     select * into v_order from public.orders where id = new.order_id;
     if not found then
       return new;
     end if;
+
+    perform pg_advisory_xact_lock(hashtext(v_order.id::text));
 
     if exists (
       select 1
       from public.notifications n
       where n.order_id = v_order.id
         and n.kind = 'new_order'
+        and n.recipient_id = v_order.seller_id
     ) then
-      return new;
-    end if;
-
-    if new.product_id is null and coalesce(new.product_name, '') ilike 'delivery%' then
       return new;
     end if;
 
@@ -542,7 +549,8 @@
         'firstItem', new.product_name,
         'qty', new.quantity
       )
-    );
+    )
+    on conflict do nothing;
 
     insert into public.notifications(recipient_id, order_id, kind, title, body, data)
     select
@@ -562,7 +570,8 @@
     from public.profiles p
     where p.seller_workspace_owner_id = v_order.seller_id
       and p.seller_team_role = 'staff'
-      and p.seller_join_status = 'approved';
+      and p.seller_join_status = 'approved'
+    on conflict do nothing;
 
     return new;
   end;

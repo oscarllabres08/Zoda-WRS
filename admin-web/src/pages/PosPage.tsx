@@ -311,16 +311,77 @@ export function PosPage() {
         </section>
 
         <aside className="pos-cart card card-flat">
-          <div className="pos-cart-scroll">
-            <div className="pos-cart-head">
-              <h2>
-                <CartIcon /> Cart ({cartCount} {cartCount === 1 ? 'item' : 'items'})
-              </h2>
-              <button type="button" className="pos-link-danger" disabled={cart.length === 0} onClick={clearCart}>
-                Clear Cart
-              </button>
-            </div>
+          <div className="pos-cart-head">
+            <h2>
+              <CartIcon /> Cart ({cartCount} {cartCount === 1 ? 'item' : 'items'})
+            </h2>
+            <button type="button" className="pos-link-danger" disabled={cart.length === 0} onClick={clearCart}>
+              Clear Cart
+            </button>
+          </div>
 
+          <div
+            className={[
+              'pos-cart-lines-scroll',
+              cart.length > 3 ? 'pos-cart-lines-scroll--overflow' : '',
+              cart.length > 0 && cart.length <= 3 ? `pos-cart-lines-scroll--items-${cart.length}` : '',
+            ]
+              .filter(Boolean)
+              .join(' ')}
+            aria-label="Cart items"
+          >
+            <div className="pos-cart-lines">
+              {cart.length === 0 ? (
+                <p className="muted-block">Tap + on a product to add it here.</p>
+              ) : (
+                cart.map((l) => {
+                  const img = publicWrsAssetUrl(supabase, l.image_url);
+                  return (
+                    <div key={l.productId} className="pos-cart-line">
+                      <div className="pos-cart-line-thumb">{img ? <img src={img} alt="" /> : null}</div>
+                      <div className="pos-cart-line-body">
+                        <div className="pos-cart-line-title">{l.name}</div>
+                        <div className="pos-cart-line-unit">{money(l.unitPrice)} / pc</div>
+                        <div className="pos-cart-line-foot">
+                          <div className="qty-stepper">
+                            <button
+                              type="button"
+                              aria-label="Decrease quantity"
+                              onClick={() => setLineQty(l.productId, l.quantity - 1)}
+                            >
+                              −
+                            </button>
+                            <span>{l.quantity}</span>
+                            <button
+                              type="button"
+                              aria-label="Increase quantity"
+                              onClick={() => setLineQty(l.productId, l.quantity + 1)}
+                            >
+                              +
+                            </button>
+                          </div>
+                          <span className="pos-cart-line-total">{money(l.unitPrice * l.quantity)}</span>
+                          <button
+                            type="button"
+                            className="pos-icon-btn danger"
+                            aria-label="Remove"
+                            onClick={() => removeLine(l.productId)}
+                          >
+                            <TrashIcon />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+          {cart.length > 3 ? (
+            <p className="field-hint pos-cart-scroll-hint">Scroll to see all {cart.length} items</p>
+          ) : null}
+
+          <div className="pos-cart-lower">
             <label className="field pos-customer-field">
               <span className="pos-cash-label">Customer name</span>
               <input
@@ -330,64 +391,8 @@ export function PosPage() {
                 onChange={(e) => setCustomerName(e.target.value)}
                 autoComplete="name"
               />
-              <p className="field-hint">Required for unpaid orders. Saved names appear in Customer list.</p>
+              <p className="field-hint pos-customer-hint">Required for unpaid orders. Saved names appear in Customer list.</p>
             </label>
-
-            <div
-              className={`pos-cart-lines-scroll${cart.length > 3 ? ' pos-cart-lines-scroll--overflow' : ''}`}
-              aria-label="Cart items"
-            >
-              <div className="pos-cart-lines">
-                {cart.length === 0 ? (
-                  <p className="muted-block">Tap + on a product to add it here.</p>
-                ) : (
-                  cart.map((l) => {
-                    const img = publicWrsAssetUrl(supabase, l.image_url);
-                    return (
-                      <div key={l.productId} className="pos-cart-line">
-                        <div className="pos-cart-line-thumb">{img ? <img src={img} alt="" /> : null}</div>
-                        <div className="pos-cart-line-body">
-                          <div className="pos-cart-line-title">{l.name}</div>
-                          <div className="pos-cart-line-unit">{money(l.unitPrice)} / pc</div>
-                          <div className="pos-cart-line-foot">
-                            <div className="qty-stepper">
-                              <button
-                                type="button"
-                                aria-label="Decrease quantity"
-                                onClick={() => setLineQty(l.productId, l.quantity - 1)}
-                              >
-                                −
-                              </button>
-                              <span>{l.quantity}</span>
-                              <button
-                                type="button"
-                                aria-label="Increase quantity"
-                                onClick={() => setLineQty(l.productId, l.quantity + 1)}
-                              >
-                                +
-                              </button>
-                            </div>
-                            <span className="pos-cart-line-total">{money(l.unitPrice * l.quantity)}</span>
-                            <button
-                              type="button"
-                              className="pos-icon-btn danger"
-                              aria-label="Remove"
-                              onClick={() => removeLine(l.productId)}
-                            >
-                              <TrashIcon />
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            </div>
-            {cart.length > 3 ? (
-              <p className="field-hint pos-cart-scroll-hint">Scroll to see all {cart.length} items</p>
-            ) : null}
-          </div>
 
           <div className="pos-checkout-section">
             <h3 className="pos-checkout-heading">Product summary</h3>
@@ -469,6 +474,7 @@ export function PosPage() {
             <button type="button" className="btn btn-ghost btn-block" disabled={cart.length === 0} onClick={clearCart}>
               <TrashIcon /> Clear Cart
             </button>
+          </div>
           </div>
         </aside>
       </div>

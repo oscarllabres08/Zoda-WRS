@@ -343,7 +343,7 @@ export function AdminLayout() {
 
   const [navOpen, setNavOpen] = useState(false);
 
-  const { staleOrders } = usePendingOrderReminder(isLaundry ? null : businessId);
+  const { visibleOrders, dismissBanner } = usePendingOrderReminder(isLaundry ? null : businessId);
 
   const wideMain =
     location.pathname === '/pos' ||
@@ -653,7 +653,9 @@ export function AdminLayout() {
 
         <div className={`admin-main-inner${wideMain ? ' admin-main-inner--wide' : ''}`}>
 
-          {!isLaundry ? <PendingOrderReminderBanner orders={staleOrders} /> : null}
+          {!isLaundry ? (
+            <PendingOrderReminderBanner orders={visibleOrders} onDismiss={dismissBanner} />
+          ) : null}
 
           <Outlet context={{ pendingOrders, refreshPending: loadPending }} />
 

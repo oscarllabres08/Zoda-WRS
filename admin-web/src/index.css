@@ -1582,17 +1582,66 @@ table.data-table th {
     gap: 0;
   }
 
-  .pos-cart-scroll {
+  .pos-cart-lower {
     flex: none;
     min-height: auto;
     max-height: none;
     overflow: visible;
-    display: block;
   }
 
   .pos-cart-lines-scroll {
-    --pos-cart-line-height: 92px;
-    max-height: calc(var(--pos-cart-line-height) * 3 + 6px);
+    --pos-cart-line-height: 96px;
+  }
+
+  .pos-cart-lines-scroll--overflow {
+    --pos-cart-line-height: 96px;
+    max-height: calc(var(--pos-cart-line-height) * 3 + 12px);
+  }
+
+  .pos-cart-lines-scroll--items-1 {
+    min-height: calc(var(--pos-cart-line-height) * 1 + 4px);
+  }
+
+  .pos-cart-lines-scroll--items-2 {
+    min-height: calc(var(--pos-cart-line-height) * 2 + 8px);
+  }
+
+  .pos-cart-lines-scroll--items-3 {
+    min-height: calc(var(--pos-cart-line-height) * 3 + 12px);
+  }
+
+  .pos-customer-hint {
+    display: none;
+  }
+
+  .pos-customer-field {
+    margin-bottom: 0;
+  }
+
+  .pos-cart-line {
+    padding-bottom: 8px;
+    gap: 8px;
+  }
+
+  .pos-cart-line-thumb {
+    width: 44px;
+    height: 44px;
+  }
+
+  .pos-cart-line-title {
+    font-size: 13px;
+    line-height: 1.25;
+  }
+
+  .pos-cart-line-foot {
+    margin-top: 6px;
+    gap: 6px;
+  }
+
+  .qty-stepper button {
+    width: 28px;
+    height: 28px;
+    font-size: 16px;
   }
 
   .pos-checkout-section {
@@ -1600,6 +1649,9 @@ table.data-table th {
     position: relative;
     z-index: 1;
     background: var(--surface);
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
   }
 
   .pos-cart-actions {
@@ -2292,9 +2344,10 @@ table.data-table th {
   flex-direction: column;
   max-height: calc(100vh - 48px);
   overflow: hidden;
+  gap: 0;
 }
 
-.pos-cart-scroll {
+.pos-cart-lower {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
@@ -2321,6 +2374,7 @@ table.data-table th {
   justify-content: space-between;
   gap: 8px;
   margin-bottom: 12px;
+  flex-shrink: 0;
 }
 
 .pos-cart-head h2 {
@@ -2349,23 +2403,38 @@ table.data-table th {
   cursor: not-allowed;
 }
 
-/* ~3 cart lines visible; scroll when more (see --pos-cart-line-max) */
+/* Selected products: full height for 1–3 lines; scroll only when 4+ */
 .pos-cart-lines-scroll {
-  --pos-cart-line-max: 3;
-  --pos-cart-line-height: 96px;
-  max-height: calc(var(--pos-cart-line-height) * var(--pos-cart-line-max) + 8px);
-  overflow-y: auto;
-  overflow-x: hidden;
-  overscroll-behavior: contain;
-  -webkit-overflow-scrolling: touch;
+  --pos-cart-line-height: 92px;
+  flex: 0 0 auto;
+  flex-shrink: 0;
+  overflow: visible;
   margin-bottom: 12px;
   border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--surface);
-  padding: 6px 8px;
+  padding: 8px 10px;
+}
+
+.pos-cart-lines-scroll--items-1 {
+  min-height: calc(var(--pos-cart-line-height) * 1 + 4px);
+}
+
+.pos-cart-lines-scroll--items-2 {
+  min-height: calc(var(--pos-cart-line-height) * 2 + 8px);
+}
+
+.pos-cart-lines-scroll--items-3 {
+  min-height: calc(var(--pos-cart-line-height) * 3 + 12px);
 }
 
 .pos-cart-lines-scroll--overflow {
+  min-height: 0;
+  max-height: calc(var(--pos-cart-line-height) * 3 + 12px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   box-shadow: inset 0 -10px 10px -10px rgba(10, 27, 55, 0.12);
 }
 
@@ -2388,6 +2457,11 @@ table.data-table th {
   gap: 10px;
   padding-bottom: 12px;
   border-bottom: 1px solid var(--border);
+}
+
+.pos-cart-line:last-child {
+  padding-bottom: 0;
+  border-bottom: none;
 }
 
 .pos-cart-line-thumb {
@@ -5161,8 +5235,33 @@ table.data-table th {
   line-height: 1.35;
 }
 
+.pending-order-reminder-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
 .pending-order-reminder-action {
   flex-shrink: 0;
+}
+
+.pending-order-reminder-close {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 10px;
+  background: rgba(180, 83, 9, 0.12);
+  color: #b45309;
+  cursor: pointer;
+}
+
+.pending-order-reminder-close:hover {
+  background: rgba(180, 83, 9, 0.2);
+  color: #92400e;
 }
 
 @media (max-width: 767px) {
@@ -5170,8 +5269,9 @@ table.data-table th {
     flex-wrap: wrap;
   }
 
-  .pending-order-reminder-action {
+  .pending-order-reminder-actions {
     width: 100%;
+    justify-content: flex-end;
   }
 }
 

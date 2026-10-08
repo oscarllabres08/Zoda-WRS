@@ -9,9 +9,10 @@ import { theme } from '../theme';
 type Props = {
   orders: StalePendingOrder[];
   topInset: number;
+  onDismiss: () => void;
 };
 
-export function PendingOrderReminderBanner({ orders, topInset }: Props) {
+export function PendingOrderReminderBanner({ orders, topInset, onDismiss }: Props) {
   const router = useRouter();
   if (orders.length === 0) return null;
 
@@ -34,12 +35,8 @@ export function PendingOrderReminderBanner({ orders, topInset }: Props) {
         zIndex: 50,
       }}
     >
-      <Pressable
-        onPress={() => {
-          if (count === 1) router.push(`/order/${first.id}`);
-          else router.push('/(tabs)/orders');
-        }}
-        style={({ pressed }) => ({
+      <View
+        style={{
           width: '94%',
           maxWidth: 420,
           borderRadius: 14,
@@ -51,25 +48,47 @@ export function PendingOrderReminderBanner({ orders, topInset }: Props) {
           flexDirection: 'row',
           alignItems: 'center',
           gap: 10,
-          opacity: pressed ? 0.92 : 1,
           shadowColor: theme.shadow.ink,
           shadowOpacity: 0.1,
           shadowRadius: 12,
           shadowOffset: { width: 0, height: 6 },
           elevation: 5,
-        })}
+        }}
       >
-        <Ionicons name="alert-circle" size={22} color="#B45309" />
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <Text weight="extrabold" style={{ fontSize: 13, color: '#92400E' }}>
-            Pending order reminder
-          </Text>
-          <Text style={{ marginTop: 2, fontSize: 12, lineHeight: 16, color: '#78350F' }} numberOfLines={3}>
-            {label} Tap to open order details.
-          </Text>
-        </View>
-        <Ionicons name="chevron-forward" size={18} color="#B45309" />
-      </Pressable>
+        <Pressable
+          onPress={() => {
+            if (count === 1) router.push(`/order/${first.id}`);
+            else router.push('/(tabs)/orders');
+          }}
+          style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, minWidth: 0 }}
+        >
+          <Ionicons name="alert-circle" size={22} color="#B45309" />
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text weight="extrabold" style={{ fontSize: 13, color: '#92400E' }}>
+              Pending order reminder
+            </Text>
+            <Text style={{ marginTop: 2, fontSize: 12, lineHeight: 16, color: '#78350F' }} numberOfLines={3}>
+              {label} Tap to open order details.
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color="#B45309" />
+        </Pressable>
+        <Pressable
+          onPress={onDismiss}
+          accessibilityLabel="Dismiss reminder for 30 minutes"
+          hitSlop={8}
+          style={({ pressed }) => ({
+            width: 28,
+            height: 28,
+            borderRadius: 8,
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: pressed ? 'rgba(180, 83, 9, 0.18)' : 'rgba(180, 83, 9, 0.1)',
+          })}
+        >
+          <Ionicons name="close" size={18} color="#B45309" />
+        </Pressable>
+      </View>
     </View>
   );
 }

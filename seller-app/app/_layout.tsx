@@ -120,11 +120,11 @@ function RootLayoutNav() {
 function AuthGate() {
   const { user, loading, profileLoading, gateMessage } = useAuth();
   const { toast, dismissToast } = useNotifications();
-  const { staleOrders } = usePendingOrderReminder();
+  const { visibleOrders, dismissBanner } = usePendingOrderReminder();
   const segments = useSegments();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const reminderBannerVisible = user != null && staleOrders.length > 0;
+  const reminderBannerVisible = user != null && visibleOrders.length > 0;
   const toastTop = Math.max(insets.top, 10) + 6 + (reminderBannerVisible ? 78 : 0);
 
   useEffect(() => {
@@ -174,7 +174,11 @@ function AuthGate() {
       </Stack>
 
       {reminderBannerVisible ? (
-        <PendingOrderReminderBanner orders={staleOrders} topInset={Math.max(insets.top, 8)} />
+        <PendingOrderReminderBanner
+          orders={visibleOrders}
+          topInset={Math.max(insets.top, 8)}
+          onDismiss={() => void dismissBanner()}
+        />
       ) : null}
 
       {toast ? (

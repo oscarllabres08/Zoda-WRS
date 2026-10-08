@@ -1,6 +1,5 @@
--- Run in Supabase SQL Editor so new customer orders create seller/admin notifications.
--- Test notifications use seller_send_test_notification(); orders need this trigger on order_items.
--- Also run notify-seller-new-order-dedup.sql for the unique index (ON CONFLICT).
+-- Fix duplicate "New order" notifications (one per order_item row / race on multi-item carts).
+-- Run in Supabase SQL Editor after notify-seller-new-order.sql.
 
 create unique index if not exists notifications_new_order_dedup_idx
   on public.notifications (order_id, recipient_id)
@@ -27,6 +26,7 @@ begin
     return new;
   end if;
 
+  -- Serialize all order_items trigger runs for the same order (multi-row insert race).
   perform pg_advisory_xact_lock(hashtext(v_order.id::text));
 
   if exists (

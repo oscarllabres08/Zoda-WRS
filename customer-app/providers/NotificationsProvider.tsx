@@ -46,6 +46,15 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
         return;
       }
 
+      await supabase.from('push_tokens').delete().eq('token', deviceToken).neq('user_id', user.id);
+      await supabase
+        .from('push_tokens')
+        .delete()
+        .eq('user_id', user.id)
+        .eq('app', 'customer')
+        .eq('platform', Platform.OS)
+        .neq('token', deviceToken);
+
       const { error } = await supabase.from('push_tokens').upsert(
         {
           user_id: user.id,

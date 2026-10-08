@@ -597,8 +597,13 @@
               },
               body: JSON.stringify({ p_pin: entered }),
             });
-            if (!res.ok) return { ok: false, reason: 'network' };
-            const data = await res.json();
+            const data = await res.json().catch(function () {
+              return null;
+            });
+            if (!res.ok) {
+              if (res.status === 404) return { ok: false, reason: 'rpc_missing' };
+              return { ok: false, reason: 'network' };
+            }
             return { ok: data === true, reason: data === true ? 'ok' : 'wrong' };
           } catch {
             return { ok: false, reason: 'network' };
@@ -733,12 +738,22 @@
                 closeModal();
                 return;
               }
-              if (result.reason === 'config' && pinConfigError) {
+              if ((result.reason === 'config' || result.reason === 'network' || result.reason === 'rpc_missing') && pinConfigError) {
                 pinConfigError.hidden = false;
+                if (result.reason === 'rpc_missing') {
+                  pinConfigError.textContent =
+                    'PIN verification is not set up on the server yet. Ask the admin to run supabase/patches/seller-download-pin.sql in Supabase.';
+                } else if (result.reason === 'network') {
+                  pinConfigError.textContent =
+                    'Could not reach Supabase. Check download-site/js/config.js (supabaseUrl and supabaseAnonKey).';
+                }
                 if (pinError) pinError.hidden = true;
                 return;
               }
-              if (pinError) pinError.hidden = false;
+              if (pinError) {
+                pinError.hidden = false;
+                pinError.textContent = 'Incorrect PIN. Try again.';
+              }
               if (pinInput) {
                 pinInput.select();
                 pinInput.focus();

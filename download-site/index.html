@@ -383,6 +383,35 @@
         box-shadow: 0 0 0 3px rgba(58, 177, 255, 0.2);
       }
 
+      .password-field {
+        position: relative;
+      }
+
+      .password-field input {
+        padding-right: 48px;
+        text-align: left;
+        letter-spacing: 0.06em;
+        font-size: 18px;
+      }
+
+      .password-toggle {
+        position: absolute;
+        right: 8px;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 34px;
+        height: 34px;
+        border: none;
+        border-radius: 8px;
+        background: rgba(18, 101, 214, 0.08);
+        color: var(--wrs-blue);
+        cursor: pointer;
+        display: grid;
+        place-items: center;
+        font-size: 16px;
+        line-height: 1;
+      }
+
       .field-error {
         margin: -4px 0 10px;
         font-size: 13px;
@@ -488,18 +517,25 @@
         <form id="pin-form">
           <label class="field">
             <span>PIN</span>
-            <input
-              id="pin-input"
-              type="password"
-              inputmode="numeric"
-              pattern="[0-9]*"
-              maxlength="8"
-              autocomplete="off"
-              placeholder="••••••"
-              required
-            />
+            <div class="password-field">
+              <input
+                id="pin-input"
+                type="password"
+                inputmode="text"
+                maxlength="32"
+                autocomplete="off"
+                placeholder="Enter staff PIN"
+                required
+              />
+              <button type="button" class="password-toggle" id="pin-toggle" aria-label="Show PIN">
+                👁
+              </button>
+            </div>
           </label>
           <p id="pin-error" class="field-error" role="alert" hidden>Incorrect PIN. Try again.</p>
+          <p id="pin-config-error" class="field-error" role="alert" hidden>
+            Download site is not linked to Supabase yet. Ask the store admin to configure download-site/js/config.js.
+          </p>
           <button type="submit" class="btn btn-primary btn-block">Verify PIN</button>
         </form>
       </div>
@@ -509,11 +545,11 @@
     <script>
       (function () {
         const external = window.ZODA_DOWNLOAD_CFG || {};
-        /** Edit local APK filenames and staff PIN here. */
         const cfg = {
           customerApk: external.customerApkUrl || 'customer-app.apk',
           sellerApk: external.sellerApkUrl || 'seller-app.apk',
-          sellerPin: '101819',
+          supabaseUrl: (external.supabaseUrl || '').replace(/\/$/, ''),
+          supabaseAnonKey: external.supabaseAnonKey || '',
           sessionKey: 'zoda_seller_unlocked',
         };
 
@@ -531,6 +567,43 @@
         const pinForm = document.getElementById('pin-form');
         const pinInput = document.getElementById('pin-input');
         const pinError = document.getElementById('pin-error');
+        const pinConfigError = document.getElementById('pin-config-error');
+        const pinToggle = document.getElementById('pin-toggle');
+
+        function pinVerifyConfigured() {
+          return !!(cfg.supabaseUrl && cfg.supabaseAnonKey);
+        }
+
+        if (pinToggle && pinInput) {
+          pinToggle.addEventListener('click', function () {
+            const show = pinInput.type === 'password';
+            pinInput.type = show ? 'text' : 'password';
+            pinToggle.textContent = show ? '🙈' : '👁';
+            pinToggle.setAttribute('aria-label', show ? 'Hide PIN' : 'Show PIN');
+          });
+        }
+
+        async function verifySellerPin(entered) {
+          if (!pinVerifyConfigured()) {
+            return { ok: false, reason: 'config' };
+          }
+          try {
+            const res = await fetch(cfg.supabaseUrl + '/rest/v1/rpc/verify_seller_download_pin', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                apikey: cfg.supabaseAnonKey,
+                Authorization: 'Bearer ' + cfg.supabaseAnonKey,
+              },
+              body: JSON.stringify({ p_pin: entered }),
+            });
+            if (!res.ok) return { ok: false, reason: 'network' };
+            const data = await res.json();
+            return { ok: data === true, reason: data === true ? 'ok' : 'wrong' };
+          } catch {
+            return { ok: false, reason: 'network' };
+          }
+        }
 
         if (customerLink) {
           customerLink.href = cfg.customerApk;
@@ -583,6 +656,7 @@
           modal.hidden = false;
           document.body.classList.add('modal-open');
           if (pinError) pinError.hidden = true;
+          if (pinConfigError) pinConfigError.hidden = pinVerifyConfigured();
           if (pinInput) {
             pinInput.value = '';
             window.setTimeout(function () {
@@ -647,16 +721,29 @@
           pinForm.addEventListener('submit', function (e) {
             e.preventDefault();
             const entered = (pinInput && pinInput.value ? pinInput.value : '').trim();
-            if (entered === cfg.sellerPin) {
-              setUnlocked(true);
-              closeModal();
+            if (!pinVerifyConfigured()) {
+              if (pinConfigError) pinConfigError.hidden = false;
+              if (pinError) pinError.hidden = true;
               return;
             }
-            if (pinError) pinError.hidden = false;
-            if (pinInput) {
-              pinInput.select();
-              pinInput.focus();
-            }
+            if (pinConfigError) pinConfigError.hidden = true;
+            void verifySellerPin(entered).then(function (result) {
+              if (result.ok) {
+                setUnlocked(true);
+                closeModal();
+                return;
+              }
+              if (result.reason === 'config' && pinConfigError) {
+                pinConfigError.hidden = false;
+                if (pinError) pinError.hidden = true;
+                return;
+              }
+              if (pinError) pinError.hidden = false;
+              if (pinInput) {
+                pinInput.select();
+                pinInput.focus();
+              }
+            });
           });
         }
 

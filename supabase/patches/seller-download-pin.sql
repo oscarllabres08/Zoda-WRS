@@ -38,6 +38,10 @@ begin
   where user_id = v_owner
     and role = 'seller'::public.user_role
     and coalesce(seller_team_role, 'owner') = 'owner';
+
+  if not found then
+    raise exception 'Could not save PIN. Log in as the store owner (master admin) and try again.';
+  end if;
 end;
 $$;
 
@@ -77,7 +81,7 @@ begin
     return false;
   end if;
 
-  return v_stored = v_entered;
+  return trim(v_stored) = v_entered;
 end;
 $$;
 

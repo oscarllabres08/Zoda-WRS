@@ -93,7 +93,6 @@ export function SettingsPage() {
 
   useEffect(() => {
     setDownloadPinError(null);
-    setDownloadPinSuccess(null);
   }, [downloadPin, downloadPinConfirm, downloadPinPassword]);
 
   const loadDownloadPinStatus = useCallback(async () => {
@@ -171,8 +170,9 @@ export function SettingsPage() {
     setDownloadPinConfirm('');
     setDownloadPinPassword('');
     setDownloadPinConfigured(true);
-    setDownloadPinSuccess('Seller app download PIN updated. The download site will use this PIN immediately.');
+    setDownloadPinSuccess('Download PIN saved successfully. You can use it now on the seller app download page.');
     setDownloadPinSaving(false);
+    void loadDownloadPinStatus();
   }
 
   async function onChangePassword(e: FormEvent) {

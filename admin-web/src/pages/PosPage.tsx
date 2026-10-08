@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { useAuth } from '../auth/AuthProvider';
+import { CustomerNameAutocomplete } from '../components/CustomerNameAutocomplete';
 import { money, publicWrsAssetUrl } from '../lib/format';
+import { loadPosCustomerNames, type PosCustomerOption } from '../lib/posCustomerNames';
 import { isLowStock, stockLabel, tracksStock } from '../lib/inventoryStock';
 import { type PosPaymentMethod } from '../lib/posPayment';
 import { supabase } from '../lib/supabase';
@@ -53,6 +55,7 @@ export function PosPage() {
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState<PosCategory>('all');
   const [customerName, setCustomerName] = useState('');
+  const [customerNameOptions, setCustomerNameOptions] = useState<PosCustomerOption[]>([]);
   const [paymentMethod, setPaymentMethod] = useState<PosPaymentMethod>('cash');
   const [cashReceived, setCashReceived] = useState('');
 
@@ -70,8 +73,15 @@ export function PosPage() {
     setLoading(false);
   }, [businessId]);
 
+  const loadCustomerNames = useCallback(async () => {
+    if (!businessId) return;
+    const names = await loadPosCustomerNames(businessId);
+    setCustomerNameOptions(names);
+  }, [businessId]);
+
   useEffect(() => {
     void loadProducts();
+    void loadCustomerNames();
     if (!businessId) return;
     const ch = supabase
       .channel(`admin-pos-products-${businessId}`)
@@ -84,7 +94,7 @@ export function PosPage() {
     return () => {
       supabase.removeChannel(ch);
     };
-  }, [businessId, loadProducts]);
+  }, [businessId, loadProducts, loadCustomerNames]);
 
   const filteredProducts = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -191,6 +201,7 @@ export function PosPage() {
           ? Math.max(0, cashValue - cartTotal)
           : null;
 
+      const settledAt = paymentSettled ? new Date().toISOString() : null;
       const { data: saleRow, error: saleErr } = await supabase
         .from('pos_sales')
         .insert({
@@ -198,6 +209,7 @@ export function PosPage() {
           customer_name: trimmedName || null,
           payment_method: paymentMethod,
           payment_settled: paymentSettled,
+          payment_settled_at: settledAt,
           cash_received: cashValue,
           change_due: changeDue,
         })
@@ -228,6 +240,7 @@ export function PosPage() {
         }
       }
       await loadProducts();
+      await loadCustomerNames();
       clearCart();
       const who = trimmedName ? `${trimmedName} · ` : '';
       const payLabel = paymentMethod === 'gcash' ? 'GCash' : 'Cash';
@@ -382,17 +395,16 @@ export function PosPage() {
           ) : null}
 
           <div className="pos-cart-lower">
-            <label className="field pos-customer-field">
-              <span className="pos-cash-label">Customer name</span>
-              <input
-                type="text"
-                placeholder="e.g. Juan Dela Cruz"
-                value={customerName}
-                onChange={(e) => setCustomerName(e.target.value)}
-                autoComplete="name"
-              />
-              <p className="field-hint pos-customer-hint">Required for unpaid orders. Saved names appear in Customer list.</p>
-            </label>
+            <CustomerNameAutocomplete
+              value={customerName}
+              onChange={setCustomerName}
+              options={customerNameOptions}
+              hint={
+                <p className="field-hint pos-customer-hint">
+                  Required for unpaid orders. Start typing to pick an existing customer.
+                </p>
+              }
+            />
 
           <div className="pos-checkout-section">
             <h3 className="pos-checkout-heading">Product summary</h3>
@@ -453,6 +465,7 @@ export function PosPage() {
               <p className="muted-block pos-gcash-hint">GCash payment — mark paid when reference is confirmed.</p>
             )}
           </div>
+          </div>
 
           <div className="pos-cart-actions">
             <button
@@ -474,7 +487,6 @@ export function PosPage() {
             <button type="button" className="btn btn-ghost btn-block" disabled={cart.length === 0} onClick={clearCart}>
               <TrashIcon /> Clear Cart
             </button>
-          </div>
           </div>
         </aside>
       </div>

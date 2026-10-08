@@ -7,6 +7,7 @@ import {
   sanitizeAuthEmail,
   sanitizeAuthPasswordSignup,
 } from '../../lib/authInputSecurity';
+import { registerPendingSeller } from '../../lib/registerPendingSeller';
 import { supabase } from '../../lib/supabase';
 import { Screen } from '../../ui/components/Screen';
 import { Card } from '../../ui/components/Card';
@@ -53,7 +54,13 @@ export default function SignUpScreen() {
       const { data: authData, error: err } = await supabase.auth.signUp({
         email: creds.email,
         password: creds.password,
-        options: { data: { display_name: name.trim() } },
+        options: {
+          data: {
+            display_name: name.trim(),
+            phone: contactNumber.trim(),
+            seller_signup: true,
+          },
+        },
       });
       if (err) throw err;
 
@@ -62,32 +69,25 @@ export default function SignUpScreen() {
           pathname: '/(auth)/sign-in',
           params: {
             notice:
-              'Confirm your email if asked, then sign in. After that, tap “Submit registration” once to send your request for approval.',
+              'Registration saved. Confirm your email if asked, then sign in — you will see a waiting-for-approval message until the administrator approves you.',
           },
         });
         return;
       }
 
-      const { data: reg, error: regErr } = await supabase.rpc('register_pending_seller', {
-        p_display_name: name.trim(),
-        p_phone: contactNumber.trim(),
+      const { data: regObj, error: regErr } = await registerPendingSeller({
+        displayName: name.trim(),
+        phone: contactNumber.trim(),
       });
 
       if (regErr) {
         await supabase.auth.signOut();
-        setError(regErr.message || 'Could not submit registration.');
-        return;
-      }
-
-      const regObj = reg as { ok?: boolean; error?: string; message?: string } | null;
-      if (regObj && regObj.ok === false) {
-        await supabase.auth.signOut();
-        setError(regObj.message ?? 'Registration could not be submitted.');
+        setError(regErr);
         return;
       }
 
       // First ever registrant becomes the owner and can proceed immediately.
-      if ((regObj as any)?.owner === true && (regObj as any)?.approved === true) {
+      if (regObj?.owner === true && regObj?.approved === true) {
         router.replace('/(tabs)/orders');
         return;
       }

@@ -174,7 +174,7 @@ async function supabaseSelectPushTokens(recipientId: string, app: "seller" | "cu
   url.searchParams.set("app", `eq.${app}`);
   url.searchParams.set("platform", "eq.android");
   url.searchParams.set("order", "updated_at.desc");
-  url.searchParams.set("limit", "20");
+  url.searchParams.set("limit", "5");
 
   const res = await fetch(url.toString(), {
     headers: supabaseHeaders(serviceKey),
@@ -202,54 +202,10 @@ function dedupePushTokensByValue(tokens: PushTokenRow[]): PushTokenRow[] {
   return [...byToken.values()];
 }
 
-function buildPushDedupeKey(kind: string, orderId: string, notificationId: string, fcmToken: string): string {
-  if (orderId && kind) return `${kind}:${orderId}:${fcmToken}`;
-  if (notificationId) return `${notificationId}:${fcmToken}`;
-  return `${kind || "alert"}:${fcmToken}:${Date.now()}`;
-}
-
 function buildCollapseTag(kind: string, orderId: string, notificationId: string): string {
   if (orderId && kind) return `${kind}:${orderId}`;
   if (notificationId) return notificationId;
   return kind || "wrs_alert";
-}
-
-/** Skip if this order/notification was already pushed to this device token. */
-async function claimPushDelivery(dedupeKey: string): Promise<boolean> {
-  try {
-    const supabaseUrl = getEnvAny(["SB_URL", "SUPABASE_URL"]);
-    const serviceKey = getEnvAny(["SB_SERVICE_ROLE_KEY", "SUPABASE_SERVICE_ROLE_KEY"]);
-
-    const res = await fetch(new URL("/rest/v1/push_deliveries", supabaseUrl).toString(), {
-      method: "POST",
-      headers: supabaseHeaders(serviceKey, {
-        "content-type": "application/json",
-        Prefer: "resolution=ignore-duplicates,return=representation",
-      }),
-      body: JSON.stringify({ dedupe_key: dedupeKey }),
-    });
-
-    if (res.status === 404) return true;
-
-    const body = await res.json().catch(() => null);
-    if (res.status === 201) {
-      return !(Array.isArray(body) && body.length === 0);
-    }
-    if (res.status === 409) return false;
-
-    const checkUrl = new URL("/rest/v1/push_deliveries", supabaseUrl);
-    checkUrl.searchParams.set("select", "dedupe_key");
-    checkUrl.searchParams.set("dedupe_key", `eq.${dedupeKey}`);
-    checkUrl.searchParams.set("limit", "1");
-
-    const check = await fetch(checkUrl.toString(), { headers: supabaseHeaders(serviceKey) });
-    const rows = await check.json().catch(() => []);
-    if (Array.isArray(rows) && rows.length > 0) return false;
-
-    return true;
-  } catch {
-    return true;
-  }
 }
 
 function inferTargetApp(payload: WebhookPayload): "seller" | "customer" | null {
@@ -356,7 +312,9 @@ Deno.serve(async (req) => {
     }
 
     const tokensAll = await supabaseSelectPushTokens(recipientId, targetApp);
-    const tokens = dedupePushTokensByValue(tokensAll);
+    const tokensUnique = dedupePushTokensByValue(tokensAll);
+    // One physical device = one FCM token row; never send to stale duplicates.
+    const tokens = tokensUnique.slice(0, 1);
     if (!tokens.length) return json({ ok: true, skipped: true, reason: "no_android_tokens" });
 
     const fcmProjectId = getEnv("FCM_PROJECT_ID");
@@ -381,15 +339,9 @@ Deno.serve(async (req) => {
       if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") data[k] = String(v);
     }
 
-    const results: Array<{ token: string; ok: boolean; skipped?: boolean; error?: string }> = [];
+    const results: Array<{ token: string; ok: boolean; error?: string }> = [];
     for (const t of tokens) {
       try {
-        const dedupeKey = buildPushDedupeKey(kind, orderId, notificationId, t.token);
-        const claimed = await claimPushDelivery(dedupeKey);
-        if (!claimed) {
-          results.push({ token: t.token, ok: true, skipped: true });
-          continue;
-        }
         await sendFcmMessage({
           fcmProjectId,
           accessToken,
@@ -408,8 +360,7 @@ Deno.serve(async (req) => {
 
     return json({
       ok: true,
-      sent: results.filter((r) => r.ok && !r.skipped).length,
-      skipped: results.filter((r) => r.skipped).length,
+      sent: results.filter((r) => r.ok).length,
       tokenCount: tokens.length,
       results,
     });

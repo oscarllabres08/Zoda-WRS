@@ -5,7 +5,7 @@ import { PageHeader } from '../components/PageHeader';
 import { useAuth } from '../auth/AuthProvider';
 import { todayDateInputValue } from '../lib/expenseTypes';
 import { money } from '../lib/format';
-import { orderCountsTowardOnlineSales } from '../lib/orderSalesEligible';
+import { orderCountsTowardOnlineSales, posCountsTowardWalkInSales, saleRecordedAt } from '../lib/orderSalesEligible';
 import { LOW_STOCK_THRESHOLD } from '../lib/inventoryStock';
 import { supabase } from '../lib/supabase';
 
@@ -114,10 +114,14 @@ export function DashboardPage() {
     const [ordersRes, posRes, pendingRes, recentResult, staffRes, prodRes, lowStockRes, expensesRes] = await Promise.all([
       supabase
         .from('orders')
-        .select('id,status,payment_settled,payment_method,order_items(unit_price,quantity)')
+        .select('id,status,created_at,payment_settled,payment_settled_at,payment_method,order_items(unit_price,quantity)')
         .eq('seller_id', businessId)
-        .gte('created_at', from),
-      supabase.from('pos_sales').select('id,created_at,pos_sale_items(unit_price,quantity)').eq('seller_id', businessId).gte('created_at', from),
+        .or(`and(payment_settled.eq.true,payment_settled_at.gte.${from}),and(created_at.gte.${from})`),
+      supabase
+        .from('pos_sales')
+        .select('id,created_at,payment_settled,payment_settled_at,pos_sale_items(unit_price,quantity)')
+        .eq('seller_id', businessId)
+        .or(`and(payment_settled.eq.true,payment_settled_at.gte.${from}),and(created_at.gte.${from})`),
       supabase.from('orders').select('id', { count: 'exact', head: true }).eq('seller_id', businessId).eq('status', 'pending'),
       fetchRecentOrders(0),
       supabase
@@ -143,14 +147,19 @@ export function DashboardPage() {
     ]);
 
     let online = 0;
+    const todayStart = startOfToday();
     for (const o of ordersRes.data ?? []) {
       const row = o as {
         status: string;
+        created_at: string;
         payment_settled: boolean | null;
+        payment_settled_at: string | null;
         payment_method: string | null;
         order_items: { unit_price: number; quantity: number }[];
       };
       if (!orderCountsTowardOnlineSales(row)) continue;
+      const recordedAt = saleRecordedAt(row);
+      if (!recordedAt || recordedAt < todayStart) continue;
       for (const it of row.order_items ?? []) {
         online += Number(it.unit_price) * Number(it.quantity);
       }
@@ -158,7 +167,15 @@ export function DashboardPage() {
 
     let walk = 0;
     for (const s of posRes.data ?? []) {
-      const sale = s as { pos_sale_items: { unit_price: number; quantity: number }[] };
+      const sale = s as {
+        payment_settled: boolean | null;
+        payment_settled_at: string | null;
+        created_at: string;
+        pos_sale_items: { unit_price: number; quantity: number }[];
+      };
+      if (!posCountsTowardWalkInSales(sale)) continue;
+      const recordedAt = saleRecordedAt(sale);
+      if (!recordedAt || recordedAt < todayStart) continue;
       for (const it of sale.pos_sale_items ?? []) {
         walk += Number(it.unit_price) * Number(it.quantity);
       }

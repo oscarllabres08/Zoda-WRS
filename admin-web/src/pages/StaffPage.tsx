@@ -23,10 +23,37 @@ export function StaffPage() {
     if (!user?.id || !businessId) return;
     setLoading(true);
     setError(null);
+
     const { data, error: qErr } = await supabase.rpc('owner_list_workspace_staff');
-    if (qErr) setError(qErr.message);
-    const list = (Array.isArray(data) ? data : (data ?? [])) as Row[];
-    setRows(list);
+    if (!qErr) {
+      const list = (Array.isArray(data) ? data : (data ?? [])) as Row[];
+      setRows(list);
+      setLoading(false);
+      return;
+    }
+
+    // Fallback when RPC patch not applied yet — still show pending staff.
+    const { data: fallback, error: fbErr } = await supabase
+      .from('profiles')
+      .select('user_id,display_name,phone,seller_join_status,created_at')
+      .eq('seller_workspace_owner_id', businessId)
+      .eq('seller_team_role', 'staff')
+      .order('created_at', { ascending: false });
+
+    if (fbErr) {
+      setError(qErr.message || fbErr.message);
+      setRows([]);
+    } else {
+      setRows(
+        (fallback ?? []).map((r) => ({
+          ...(r as Omit<Row, 'email'>),
+          email: null,
+        }))
+      );
+      if (qErr.message.includes('owner_list_workspace_staff')) {
+        setError('Staff list loaded without email. Run supabase/patches/fix-staff-pending-approval.sql in Supabase.');
+      }
+    }
     setLoading(false);
   }, [user?.id, businessId]);
 

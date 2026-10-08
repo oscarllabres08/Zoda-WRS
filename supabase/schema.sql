@@ -482,6 +482,73 @@
   on public.push_tokens for delete
   using (auth.uid() = user_id);
 
+  delete from public.push_tokens
+  where id in (
+    select id
+    from (
+      select id,
+             row_number() over (
+               partition by user_id, app, platform
+               order by coalesce(updated_at, created_at) desc, id desc
+             ) as rn
+      from public.push_tokens
+    ) ranked
+    where rn > 1
+  );
+
+  delete from public.push_tokens
+  where id in (
+    select id
+    from (
+      select id,
+             row_number() over (
+               partition by token, app
+               order by coalesce(updated_at, created_at) desc, id desc
+             ) as rn
+      from public.push_tokens
+    ) ranked
+    where rn > 1
+  );
+
+  create unique index if not exists push_tokens_seller_token_unique
+    on public.push_tokens (token)
+    where app = 'seller';
+
+  create unique index if not exists push_tokens_customer_token_unique
+    on public.push_tokens (token)
+    where app = 'customer';
+
+  create table if not exists public.push_deliveries (
+    dedupe_key text primary key,
+    sent_at timestamptz not null default now()
+  );
+
+  create index if not exists push_deliveries_sent_at_idx on public.push_deliveries (sent_at desc);
+
+  alter table public.push_deliveries enable row level security;
+
+  create or replace function public.claim_push_delivery(p_dedupe_key text)
+  returns boolean
+  language plpgsql
+  security definer
+  set search_path = public
+  set row_security = off
+  as $$
+  begin
+    if p_dedupe_key is null or length(trim(p_dedupe_key)) = 0 then
+      return false;
+    end if;
+    insert into public.push_deliveries (dedupe_key) values (trim(p_dedupe_key));
+    return true;
+  exception
+    when unique_violation then
+      return false;
+  end;
+  $$;
+
+  revoke all on function public.claim_push_delivery(text) from public;
+  grant execute on function public.claim_push_delivery(text) to service_role;
+
   create unique index if not exists notifications_new_order_dedup_idx
     on public.notifications (order_id, recipient_id)
     where kind = 'new_order';
@@ -504,74 +571,79 @@
       return new;
     end if;
 
-    select * into v_order from public.orders where id = new.order_id;
-    if not found then
-      return new;
-    end if;
+    begin
+      select * into v_order from public.orders where id = new.order_id;
+      if not found then
+        return new;
+      end if;
 
-    perform pg_advisory_xact_lock(hashtext(v_order.id::text));
+      perform pg_advisory_xact_lock(hashtext(v_order.id::text));
 
-    if exists (
-      select 1
-      from public.notifications n
-      where n.order_id = v_order.id
-        and n.kind = 'new_order'
-        and n.recipient_id = v_order.seller_id
-    ) then
-      return new;
-    end if;
+      if exists (
+        select 1
+        from public.notifications n
+        where n.order_id = v_order.id
+          and n.kind = 'new_order'
+          and n.recipient_id = v_order.seller_id
+      ) then
+        return new;
+      end if;
 
-    select count(*)::int
-    into v_item_count
-    from public.order_items oi
-    where oi.order_id = new.order_id
-      and oi.product_id is not null;
+      select count(*)::int
+      into v_item_count
+      from public.order_items oi
+      where oi.order_id = new.order_id
+        and oi.product_id is not null;
 
-    v_body := coalesce(v_order.customer_name, 'Customer') || ' placed an order';
-    if v_item_count > 1 then
-      v_body := v_body || ' (' || v_item_count::text || ' items).';
-    else
-      v_body := v_body || '. ' || coalesce(new.product_name, 'Item') || ' • Qty ' || new.quantity::text;
-    end if;
+      v_body := coalesce(v_order.customer_name, 'Customer') || ' placed an order';
+      if v_item_count > 1 then
+        v_body := v_body || ' (' || v_item_count::text || ' items).';
+      else
+        v_body := v_body || '. ' || coalesce(new.product_name, 'Item') || ' • Qty ' || new.quantity::text;
+      end if;
 
-    insert into public.notifications(recipient_id, order_id, kind, title, body, data)
-    values (
-      v_order.seller_id,
-      v_order.id,
-      'new_order',
-      'New order',
-      v_body,
-      jsonb_build_object(
-        'orderId', v_order.id,
-        'app', 'seller',
-        'customerName', v_order.customer_name,
-        'itemCount', v_item_count,
-        'firstItem', new.product_name,
-        'qty', new.quantity
+      insert into public.notifications(recipient_id, order_id, kind, title, body, data)
+      values (
+        v_order.seller_id,
+        v_order.id,
+        'new_order',
+        'New order',
+        v_body,
+        jsonb_build_object(
+          'orderId', v_order.id,
+          'app', 'seller',
+          'customerName', v_order.customer_name,
+          'itemCount', v_item_count,
+          'firstItem', new.product_name,
+          'qty', new.quantity
+        )
       )
-    )
-    on conflict do nothing;
+      on conflict do nothing;
 
-    insert into public.notifications(recipient_id, order_id, kind, title, body, data)
-    select
-      p.user_id,
-      v_order.id,
-      'new_order',
-      'New order',
-      v_body,
-      jsonb_build_object(
-        'orderId', v_order.id,
-        'app', 'seller',
-        'customerName', v_order.customer_name,
-        'itemCount', v_item_count,
-        'firstItem', new.product_name,
-        'qty', new.quantity
-      )
-    from public.profiles p
-    where p.seller_workspace_owner_id = v_order.seller_id
-      and p.seller_team_role = 'staff'
-      and p.seller_join_status = 'approved'
-    on conflict do nothing;
+      insert into public.notifications(recipient_id, order_id, kind, title, body, data)
+      select
+        p.user_id,
+        v_order.id,
+        'new_order',
+        'New order',
+        v_body,
+        jsonb_build_object(
+          'orderId', v_order.id,
+          'app', 'seller',
+          'customerName', v_order.customer_name,
+          'itemCount', v_item_count,
+          'firstItem', new.product_name,
+          'qty', new.quantity
+        )
+      from public.profiles p
+      where p.seller_workspace_owner_id = v_order.seller_id
+        and p.seller_team_role = 'staff'
+        and p.seller_join_status = 'approved'
+      on conflict do nothing;
+    exception
+      when others then
+        raise warning 'notify_seller_new_order skipped: %', sqlerrm;
+    end;
 
     return new;
   end;
@@ -590,23 +662,62 @@
     v_url text;
     v_secret text;
     v_jwt text;
+    v_target_app text;
+    v_token text;
+    v_dedupe_key text;
+    v_should_send boolean := true;
   begin
-    select value into v_url from public.system_settings where key = 'push_webhook_url';
-    select value into v_secret from public.system_settings where key = 'push_webhook_secret';
-    select value into v_jwt from public.system_settings where key = 'push_function_jwt';
-
-    if v_url is null or v_url like 'CONFIGURE_%' then
-      return new;
-    end if;
-    if v_secret is null or v_secret like 'CONFIGURE_%' then
-      return new;
-    end if;
-    if v_jwt is null or v_jwt like 'CONFIGURE_%' then
-      return new;
-    end if;
-
-    -- Fire-and-forget HTTP call (async). Never fail the notifications insert if pg_net / webhook errors.
     begin
+      select value into v_url from public.system_settings where key = 'push_webhook_url';
+      select value into v_secret from public.system_settings where key = 'push_webhook_secret';
+      select value into v_jwt from public.system_settings where key = 'push_function_jwt';
+
+      if v_url is null or v_url like 'CONFIGURE_%' then
+        return new;
+      end if;
+      if v_secret is null or v_secret like 'CONFIGURE_%' then
+        return new;
+      end if;
+      if v_jwt is null or v_jwt like 'CONFIGURE_%' then
+        return new;
+      end if;
+
+      v_target_app := case
+        when new.kind in ('new_order', 'seller_registration_pending', 'order_activity', 'pending_order_reminder') then 'seller'
+        when new.kind in ('order_status', 'seller_reminder', 'loyalty_points') then 'customer'
+        else coalesce(new.data->>'app', null)
+      end;
+
+      if v_target_app is not null then
+        select pt.token
+        into v_token
+        from public.push_tokens pt
+        where pt.user_id = new.recipient_id
+          and pt.app = v_target_app
+          and pt.platform = 'android'
+        order by coalesce(pt.updated_at, pt.created_at) desc
+        limit 1;
+      end if;
+
+      if v_token is not null and length(trim(v_token)) > 0 then
+        if new.order_id is not null and new.kind is not null then
+          v_dedupe_key := new.kind || ':' || new.order_id::text || ':' || trim(v_token);
+        else
+          v_dedupe_key := new.id::text || ':' || trim(v_token);
+        end if;
+
+        begin
+          v_should_send := public.claim_push_delivery(v_dedupe_key);
+        exception
+          when others then
+            v_should_send := true;
+        end;
+
+        if not v_should_send then
+          return new;
+        end if;
+      end if;
+
       perform net.http_post(
         url := v_url,
         headers := jsonb_build_object(
@@ -968,6 +1079,51 @@
   grant execute on function public.register_pending_seller(text) to authenticated;
   grant execute on function public.register_pending_seller(text) to service_role;
 
+  create or replace function public.owner_list_workspace_staff()
+  returns jsonb
+  language plpgsql
+  security definer
+  set search_path = public
+  set row_security = off
+  as $$
+  declare
+    v_owner uuid := auth.uid();
+    v_business uuid := public.seller_business_id(v_owner);
+  begin
+    if v_owner is null then
+      raise exception 'Not authenticated';
+    end if;
+    if v_business is null or v_business is distinct from v_owner then
+      raise exception 'Only the store administrator can view staff';
+    end if;
+
+    return coalesce(
+      (
+        select jsonb_agg(
+          jsonb_build_object(
+            'user_id', p.user_id,
+            'display_name', p.display_name,
+            'phone', p.phone,
+            'email', u.email,
+            'seller_join_status', p.seller_join_status,
+            'created_at', p.created_at
+          )
+          order by p.created_at desc
+        )
+        from public.profiles p
+        left join auth.users u on u.id = p.user_id
+        where p.seller_workspace_owner_id = v_owner
+          and p.seller_team_role = 'staff'
+      ),
+      '[]'::jsonb
+    );
+  end;
+  $$;
+
+  revoke all on function public.owner_list_workspace_staff() from public;
+  grant execute on function public.owner_list_workspace_staff() to authenticated;
+  grant execute on function public.owner_list_workspace_staff() to service_role;
+
   -- Store owner removes a staff account from their workspace.
   -- Tries hard-delete (profile + auth user). If blocked by FK history (e.g., orders), falls back to disabling access.
   create or replace function public.owner_delete_staff_account(p_staff_user_id uuid)
@@ -1066,8 +1222,12 @@
       raise exception 'Invalid status';
     end if;
 
+    if lower(trim(p_status)) = 'rejected' then
+      return public.owner_delete_staff_account(p_staff_user_id);
+    end if;
+
     update public.profiles p
-    set seller_join_status = lower(trim(p_status))
+    set seller_join_status = 'approved'
     where p.user_id = p_staff_user_id
       and p.role = 'seller'
       and p.seller_team_role = 'staff'
@@ -1078,7 +1238,7 @@
       raise exception 'Staff member not found or not in your workspace';
     end if;
 
-    return jsonb_build_object('ok', true);
+    return jsonb_build_object('ok', true, 'status', 'approved');
   end;
   $$;
 
@@ -1226,7 +1386,8 @@
       raise exception 'Seller workspace not available';
     end if;
     update public.orders o
-    set payment_settled = true
+    set payment_settled = true,
+        payment_settled_at = now()
     where o.id = p_order_id
       and o.seller_id = v_business
       and o.status <> 'cancelled'
@@ -1449,6 +1610,7 @@
     customer_name text,
     payment_method text not null default 'cash',
     payment_settled boolean not null default true,
+    payment_settled_at timestamptz,
     cash_received numeric(12,2),
     change_due numeric(12,2),
     created_at timestamptz not null default now()
@@ -1457,6 +1619,7 @@
   alter table public.pos_sales add column if not exists customer_name text;
   alter table public.pos_sales add column if not exists payment_method text not null default 'cash';
   alter table public.pos_sales add column if not exists payment_settled boolean not null default true;
+  alter table public.pos_sales add column if not exists payment_settled_at timestamptz;
   alter table public.pos_sales add column if not exists cash_received numeric(12,2);
   alter table public.pos_sales add column if not exists change_due numeric(12,2);
 
@@ -1670,6 +1833,7 @@
   -- New orders start unpaid; seller marks paid when payment is received.
   alter table public.orders add column if not exists payment_settled boolean not null default false;
   alter table public.orders alter column payment_settled set default false;
+  alter table public.orders add column if not exists payment_settled_at timestamptz;
 
   -- Customers can read active payment details only via this RPC (scoped by seller).
   create or replace function public.get_seller_payment_wallets(p_seller_id uuid)

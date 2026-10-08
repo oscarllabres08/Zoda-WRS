@@ -45,7 +45,7 @@ export default function SignInScreen() {
         password: creds.password,
       });
       if (err) throw err;
-      router.replace('/(tabs)/orders');
+      // Profile check runs in AuthProvider — pending staff are signed out with a notice.
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Login failed');
     } finally {

@@ -23,15 +23,9 @@ export async function registerSellerPushToken(userId: string): Promise<{ ok: boo
       return { ok: false, reason: 'no_token' };
     }
 
-    // Drop stale rows so one device / one account does not keep multiple FCM tokens.
-    await supabase.from('push_tokens').delete().eq('token', deviceToken).neq('user_id', userId);
-    await supabase
-      .from('push_tokens')
-      .delete()
-      .eq('user_id', userId)
-      .eq('app', 'seller')
-      .eq('platform', Platform.OS)
-      .neq('token', deviceToken);
+    // One phone = one seller token globally (prevents 3× push from stale multi-account rows).
+    await supabase.from('push_tokens').delete().eq('token', deviceToken);
+    await supabase.from('push_tokens').delete().eq('user_id', userId).eq('app', 'seller');
 
     const { error } = await supabase.from('push_tokens').upsert(
       {
@@ -39,6 +33,7 @@ export async function registerSellerPushToken(userId: string): Promise<{ ok: boo
         app: 'seller',
         platform: Platform.OS,
         token: deviceToken,
+        updated_at: new Date().toISOString(),
       },
       { onConflict: 'user_id,app,platform' }
     );

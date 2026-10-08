@@ -54,23 +54,36 @@ begin
   end if;
 end $$;
 
--- 3) Remove duplicate rows (keep newest updated_at per user/app/platform).
-delete from public.push_tokens a
-using public.push_tokens b
-where a.user_id = b.user_id
-  and a.app = b.app
-  and a.platform = b.platform
-  and a.id <> b.id
-  and coalesce(a.updated_at, a.created_at) < coalesce(b.updated_at, b.created_at);
+-- 3) Remove duplicate rows (keep newest per user/app/platform, then per physical token).
+delete from public.push_tokens
+where id in (
+  select id
+  from (
+    select id,
+           row_number() over (
+             partition by user_id, app, platform
+             order by coalesce(updated_at, created_at) desc, id desc
+           ) as rn
+    from public.push_tokens
+  ) ranked
+  where rn > 1
+);
 
--- 4) Same physical device token must not stay on multiple accounts (keep newest login).
-delete from public.push_tokens a
-using public.push_tokens b
-where a.token = b.token
-  and a.id <> b.id
-  and coalesce(a.updated_at, a.created_at) < coalesce(b.updated_at, b.created_at);
+delete from public.push_tokens
+where id in (
+  select id
+  from (
+    select id,
+           row_number() over (
+             partition by token, app
+             order by coalesce(updated_at, created_at) desc, id desc
+           ) as rn
+    from public.push_tokens
+  ) ranked
+  where rn > 1
+);
 
--- 5) One seller device token globally (same phone reused across old seller accounts).
+-- 4) One seller device token globally (same phone reused across old seller accounts).
 create unique index if not exists push_tokens_seller_token_unique
   on public.push_tokens (token)
   where app = 'seller';

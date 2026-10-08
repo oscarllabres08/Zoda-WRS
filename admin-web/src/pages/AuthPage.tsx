@@ -48,6 +48,7 @@ export function AuthPage() {
   const { user, loading, profileLoading, isStoreOwner, gateMessage, clearGateMessage } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -69,6 +70,13 @@ export function AuthPage() {
       if (!creds.ok) {
         setError(creds.error);
         return;
+      }
+      if (mode === 'signup') {
+        const confirm = sanitizeAuthPasswordSignup(confirmPassword, true);
+        if (confirm !== creds.password) {
+          setError('Password and confirm password do not match.');
+          return;
+        }
       }
       if (mode === 'signin') {
         const { error: err } = await supabase.auth.signInWithPassword({
@@ -175,6 +183,21 @@ export function AuthPage() {
                 maxLength={128}
               />
             </div>
+            {mode === 'signup' ? (
+              <div className="field">
+                <label htmlFor="confirm-password">Confirm password</label>
+                <PasswordInput
+                  id="confirm-password"
+                  autoComplete="new-password"
+                  placeholder="Re-enter your password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(sanitizeAuthPasswordSignup(e.target.value, true))}
+                  required
+                  minLength={6}
+                  maxLength={128}
+                />
+              </div>
+            ) : null}
             <button type="submit" className="btn btn-primary btn-water auth-submit-btn" disabled={busy}>
               {busy ? 'Please wait…' : mode === 'signin' ? 'Sign in' : 'Create owner account'}
             </button>
@@ -183,14 +206,28 @@ export function AuthPage() {
             {mode === 'signin' ? (
               <>
                 First store?{' '}
-                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setMode('signup')}>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => {
+                    setConfirmPassword('');
+                    setMode('signup');
+                  }}
+                >
                   Register as owner
                 </button>
               </>
             ) : (
               <>
                 Already have an account?{' '}
-                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setMode('signin')}>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => {
+                    setConfirmPassword('');
+                    setMode('signin');
+                  }}
+                >
                   Sign in
                 </button>
               </>

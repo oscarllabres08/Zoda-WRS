@@ -140,7 +140,7 @@ export function CustomersPage() {
   const [historyLoadingMore, setHistoryLoadingMore] = useState(false);
   const [returnBusyId, setReturnBusyId] = useState<string | null>(null);
   const [selectedEntry, setSelectedEntry] = useState<HistoryEntry | null>(null);
-  const [paymentBusy, setPaymentBusy] = useState(false);
+  const [paymentBusyKey, setPaymentBusyKey] = useState<string | null>(null);
 
   useEffect(() => {
     if (!businessId || !selectedEntry || selectedEntry.source !== 'order') return;
@@ -458,35 +458,45 @@ export function CustomersPage() {
     setHistoryHasMore(false);
   }
 
+  function historyEntryKey(entry: HistoryEntry): string {
+    return `${entry.source}-${entry.id}`;
+  }
+
   async function setEntryPaymentSettled(entry: HistoryEntry, settled: boolean) {
     if (!businessId) return;
-    setPaymentBusy(true);
+    const busyKey = historyEntryKey(entry);
+    setPaymentBusyKey(busyKey);
     setError(null);
     try {
+      const payload = settled
+        ? { payment_settled: true, payment_settled_at: new Date().toISOString() }
+        : { payment_settled: false, payment_settled_at: null };
       if (entry.source === 'order') {
         const { error: upErr } = await supabase
           .from('orders')
-          .update({ payment_settled: settled })
+          .update(payload)
           .eq('id', entry.id)
           .eq('seller_id', businessId);
         if (upErr) throw upErr;
       } else {
         const { error: upErr } = await supabase
           .from('pos_sales')
-          .update({ payment_settled: settled })
+          .update(payload)
           .eq('id', entry.id)
           .eq('seller_id', businessId);
         if (upErr) throw upErr;
       }
       const nextEntry = { ...entry, payment_settled: settled };
-      setSelectedEntry(nextEntry);
+      setSelectedEntry((prev) =>
+        prev && prev.id === entry.id && prev.source === entry.source ? nextEntry : prev
+      );
       setHistory((prev) => prev.map((h) => (h.id === entry.id && h.source === entry.source ? nextEntry : h)));
       setHistoryAll((prev) => prev.map((h) => (h.id === entry.id && h.source === entry.source ? nextEntry : h)));
       await load();
     } catch (ex) {
       setError(ex instanceof Error ? ex.message : 'Could not update payment status');
     } finally {
-      setPaymentBusy(false);
+      setPaymentBusyKey(null);
     }
   }
 
@@ -647,24 +657,42 @@ export function CustomersPage() {
             {historyLoading ? <p className="muted-block">Loading…</p> : null}
             {!historyLoading && history.length === 0 ? <p className="muted-block">No orders yet.</p> : null}
             <ul className="history-list customer-history-list">
-              {history.map((h) => (
-                <li key={`${h.source}-${h.id}`}>
-                  <button type="button" className="customer-history-item" onClick={() => setSelectedEntry(h)}>
-                    <div className="customer-history-item-top">
-                      <strong>{new Date(h.created_at).toLocaleString()}</strong>
-                      <span className="chip">{h.channelLabel}</span>
+              {history.map((h) => {
+                const entryKey = historyEntryKey(h);
+                const markingPaid = paymentBusyKey === entryKey;
+                return (
+                  <li key={entryKey} className="customer-history-row">
+                    <div className={`customer-history-item${!h.payment_settled ? ' customer-history-item--unpaid' : ''}`}>
+                      <button type="button" className="customer-history-item-main" onClick={() => setSelectedEntry(h)}>
+                        <div className="customer-history-item-top">
+                          <strong>{new Date(h.created_at).toLocaleString()}</strong>
+                          <span className="chip">{h.channelLabel}</span>
+                        </div>
+                        <div className="customer-history-item-meta">
+                          {money(h.total)} · {paymentMethodLabel(h)} ·{' '}
+                          {h.payment_settled ? (
+                            <span className="chip ok">Paid</span>
+                          ) : (
+                            <span className="chip pending">Unpaid</span>
+                          )}
+                        </div>
+                      </button>
+                      {!h.payment_settled ? (
+                        <div className="customer-history-item-actions">
+                          <button
+                            type="button"
+                            className="btn btn-primary btn-sm customer-history-mark-paid"
+                            disabled={paymentBusyKey != null}
+                            onClick={() => void setEntryPaymentSettled(h, true)}
+                          >
+                            {markingPaid ? 'Saving…' : 'Mark as paid'}
+                          </button>
+                        </div>
+                      ) : null}
                     </div>
-                    <div className="customer-history-item-meta">
-                      {money(h.total)} · {paymentMethodLabel(h)} ·{' '}
-                      {h.payment_settled ? (
-                        <span className="chip ok">Paid</span>
-                      ) : (
-                        <span className="chip pending">Unpaid</span>
-                      )}
-                    </div>
-                  </button>
-                </li>
-              ))}
+                  </li>
+                );
+              })}
             </ul>
             {historyHasMore ? (
               <div style={{ marginBottom: 12, textAlign: 'center' }}>
@@ -707,15 +735,15 @@ export function CustomersPage() {
                   <button
                     type="button"
                     className="btn btn-primary btn-sm"
-                    disabled={paymentBusy || selectedEntry.payment_settled}
+                    disabled={paymentBusyKey != null || selectedEntry.payment_settled}
                     onClick={() => void setEntryPaymentSettled(selectedEntry, true)}
                   >
-                    Mark as paid
+                    {paymentBusyKey === historyEntryKey(selectedEntry) ? 'Saving…' : 'Mark as paid'}
                   </button>
                   <button
                     type="button"
                     className="btn btn-ghost btn-sm"
-                    disabled={paymentBusy || !selectedEntry.payment_settled}
+                    disabled={paymentBusyKey != null || !selectedEntry.payment_settled}
                     onClick={() => void setEntryPaymentSettled(selectedEntry, false)}
                   >
                     Mark as unpaid

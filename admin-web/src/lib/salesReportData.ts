@@ -1,4 +1,9 @@
-import { orderCountsTowardOnlineSales } from './orderSalesEligible';
+import {
+  isSaleRecordedInRange,
+  orderCountsTowardOnlineSales,
+  posCountsTowardWalkInSales,
+  saleRecordedAt,
+} from './orderSalesEligible';
 import { formatPosPaymentMethod } from './posPayment';
 import { categoryFromProductName, type SalesCategoryKey } from './productCategory';
 import { supabase } from './supabase';
@@ -21,6 +26,7 @@ type OrderRow = {
   status: string;
   customer_name: string;
   payment_settled: boolean | null;
+  payment_settled_at?: string | null;
   payment_method: string | null;
   order_items: { product_name: string; unit_price: number; quantity: number; product_id?: string | null }[];
 };
@@ -30,6 +36,7 @@ type PosRow = {
   created_at: string;
   customer_name?: string | null;
   payment_settled?: boolean | null;
+  payment_settled_at?: string | null;
   payment_method?: string | null;
   pos_sale_items: { product_name: string; unit_price: number; quantity: number; product_id?: string | null }[];
 };
@@ -222,41 +229,43 @@ function aggregate(
 
   for (const o of orders) {
     const amt = lineTotal(o.order_items ?? []);
-    const at = new Date(o.created_at);
+    const createdAt = new Date(o.created_at);
     const countsOnline = orderCountsTowardOnlineSales(o);
     const isPaid = o.payment_settled === true && o.status !== 'cancelled';
     const isUnpaid = o.status !== 'cancelled' && o.payment_settled !== true;
+    const createdInRange = createdAt >= from && createdAt <= to;
+    const revenueInRange = countsOnline && isSaleRecordedInRange(o, from, to);
 
-    if (isUnpaid) unpaidOrders += 1;
-    if (isPaid) paidOrders += 1;
+    if (isUnpaid && createdInRange) unpaidOrders += 1;
+    if (isPaid && isSaleRecordedInRange(o, from, to)) paidOrders += 1;
 
-    if (countsOnline) {
+    if (revenueInRange) {
       onlineSales += amt;
       onlineOrderCount += 1;
-      const key = bucketKey(at, period);
+      const recordedAt = saleRecordedAt(o)!;
+      const key = bucketKey(recordedAt, period);
       const pt = timelineMap.get(key);
       if (pt) {
         pt.online += amt;
         pt.total += amt;
       }
+
+      for (const it of o.order_items ?? []) {
+        const cat = categoryFromProductName(it.product_name, it.product_id ? productCats.get(it.product_id) : null);
+        const lineAmt = Number(it.unit_price) * Number(it.quantity);
+        categoryTotals[cat] += lineAmt;
+        const prev = prodMap.get(it.product_name) ?? { name: it.product_name, units: 0, revenue: 0 };
+        prev.units += Number(it.quantity);
+        prev.revenue += lineAmt;
+        prodMap.set(it.product_name, prev);
+      }
     }
 
-    for (const it of o.order_items ?? []) {
-      if (!countsOnline) continue;
-      const cat = categoryFromProductName(it.product_name, it.product_id ? productCats.get(it.product_id) : null);
-      const lineAmt = Number(it.unit_price) * Number(it.quantity);
-      categoryTotals[cat] += lineAmt;
-      const prev = prodMap.get(it.product_name) ?? { name: it.product_name, units: 0, revenue: 0 };
-      prev.units += Number(it.quantity);
-      prev.revenue += lineAmt;
-      prodMap.set(it.product_name, prev);
-    }
-
-    if (o.status !== 'cancelled') {
+    if (o.status !== 'cancelled' && createdInRange) {
       const names = (o.order_items ?? []).map((i) => i.product_name).slice(0, 2);
       recentSales.push({
         id: `o-${o.id}`,
-        at,
+        at: createdAt,
         type: 'online',
         amount: amt,
         status: isPaid ? 'paid' : 'unpaid',
@@ -269,33 +278,41 @@ function aggregate(
 
   for (const s of posSales) {
     const amt = lineTotal(s.pos_sale_items ?? []);
-    walkInSales += amt;
-    const at = new Date(s.created_at);
-    const key = bucketKey(at, period);
-    const pt = timelineMap.get(key);
-    if (pt) {
-      pt.walkIn += amt;
-      pt.total += amt;
+    const createdAt = new Date(s.created_at);
+    const posPaid = posCountsTowardWalkInSales(s);
+    const createdInRange = createdAt >= from && createdAt <= to;
+    const revenueInRange = posPaid && isSaleRecordedInRange(s, from, to);
+
+    if (!posPaid && createdInRange) unpaidOrders += 1;
+    if (posPaid && isSaleRecordedInRange(s, from, to)) paidOrders += 1;
+
+    if (revenueInRange) {
+      walkInSales += amt;
+      const recordedAt = saleRecordedAt(s)!;
+      const key = bucketKey(recordedAt, period);
+      const pt = timelineMap.get(key);
+      if (pt) {
+        pt.walkIn += amt;
+        pt.total += amt;
+      }
+
+      for (const it of s.pos_sale_items ?? []) {
+        const cat = categoryFromProductName(it.product_name, it.product_id ? productCats.get(it.product_id) : null);
+        const lineAmt = Number(it.unit_price) * Number(it.quantity);
+        categoryTotals[cat] += lineAmt;
+        const prev = prodMap.get(it.product_name) ?? { name: it.product_name, units: 0, revenue: 0 };
+        prev.units += Number(it.quantity);
+        prev.revenue += lineAmt;
+        prodMap.set(it.product_name, prev);
+      }
     }
 
-    for (const it of s.pos_sale_items ?? []) {
-      const cat = categoryFromProductName(it.product_name, it.product_id ? productCats.get(it.product_id) : null);
-      const lineAmt = Number(it.unit_price) * Number(it.quantity);
-      categoryTotals[cat] += lineAmt;
-      const prev = prodMap.get(it.product_name) ?? { name: it.product_name, units: 0, revenue: 0 };
-      prev.units += Number(it.quantity);
-      prev.revenue += lineAmt;
-      prodMap.set(it.product_name, prev);
-    }
-
-    const posPaid = s.payment_settled !== false;
-    if (posPaid) paidOrders += 1;
-    else unpaidOrders += 1;
+    if (!createdInRange) continue;
 
     const names = (s.pos_sale_items ?? []).map((i) => i.product_name).slice(0, 2);
     recentSales.push({
       id: `p-${s.id}`,
-      at,
+      at: createdAt,
       type: 'walk-in',
       amount: amt,
       status: posPaid ? 'paid' : 'unpaid',
@@ -309,14 +326,18 @@ function aggregate(
 
   const timeline = [...timelineMap.values()].sort((a, b) => a.key.localeCompare(b.key));
   const topProducts = [...prodMap.values()].sort((a, b) => b.revenue - a.revenue).slice(0, 5);
+  const walkInTxnCount = posSales.filter((s) => {
+    const d = new Date(s.created_at);
+    return d >= from && d <= to;
+  }).length;
 
   return {
     onlineSales,
     walkInSales,
     totalSales: onlineSales + walkInSales,
     onlineOrderCount,
-    walkInTxnCount: posSales.length,
-    totalOrderCount: onlineOrderCount + posSales.length,
+    walkInTxnCount,
+    totalOrderCount: onlineOrderCount + walkInTxnCount,
     paidOrders,
     unpaidOrders,
     timeline,
@@ -328,22 +349,32 @@ function aggregate(
   };
 }
 
+function salesRangeOrFilter(fromIso: string, toIso: string): string {
+  return [
+    `and(payment_settled.eq.true,payment_settled_at.gte.${fromIso},payment_settled_at.lte.${toIso})`,
+    `and(created_at.gte.${fromIso},created_at.lte.${toIso})`,
+  ].join(',');
+}
+
 async function fetchRange(businessId: string, from: Date, to: Date): Promise<{ orders: OrderRow[]; pos: PosRow[] }> {
   const fromIso = from.toISOString();
   const toIso = to.toISOString();
+  const rangeOr = salesRangeOrFilter(fromIso, toIso);
   const [ordersRes, posRes] = await Promise.all([
     supabase
       .from('orders')
-      .select('id,created_at,status,customer_name,payment_settled,payment_method,order_items(product_name,unit_price,quantity,product_id)')
+      .select(
+        'id,created_at,status,customer_name,payment_settled,payment_settled_at,payment_method,order_items(product_name,unit_price,quantity,product_id)'
+      )
       .eq('seller_id', businessId)
-      .gte('created_at', fromIso)
-      .lte('created_at', toIso),
+      .or(rangeOr),
     supabase
       .from('pos_sales')
-      .select('id,created_at,customer_name,payment_settled,payment_method,pos_sale_items(product_name,unit_price,quantity,product_id)')
+      .select(
+        'id,created_at,customer_name,payment_settled,payment_settled_at,payment_method,pos_sale_items(product_name,unit_price,quantity,product_id)'
+      )
       .eq('seller_id', businessId)
-      .gte('created_at', fromIso)
-      .lte('created_at', toIso),
+      .or(rangeOr),
   ]);
   return {
     orders: (ordersRes.data ?? []) as OrderRow[],

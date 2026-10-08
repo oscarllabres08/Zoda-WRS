@@ -154,8 +154,17 @@ function AuthGate() {
       return;
     }
 
-    // Only proceed into the app when the profile check passed (no gate message).
-    if (user && inAuth && !gateMessage) router.replace('/(tabs)/orders');
+    // Enter app only when leaving auth — do not force /orders on every tab change.
+    if (user && inAuth && !gateMessage) {
+      router.replace('/(tabs)/orders');
+      return;
+    }
+
+    const inTabs = segments[0] === '(tabs)';
+    const onAppScreen = inTabs || segments[0] === 'order' || segments[0] === 'modal';
+    if (user && !gateMessage && !inAuth && !onAppScreen) {
+      router.replace('/(tabs)/orders');
+    }
   }, [user, loading, profileLoading, gateMessage, segments, router]);
 
   return (

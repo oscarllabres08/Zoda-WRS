@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 
+import { PasswordInput } from '../components/PasswordInput';
 import { SettingsSection } from '../components/SettingsSection';
 import { ModulePageHeader } from '../components/ModulePageHeader';
 import { useAuth } from '../auth/AuthProvider';
@@ -42,7 +43,7 @@ function SettingsToggle({
 }
 
 export function SettingsPage() {
-  const { user } = useAuth();
+  const { user, businessId } = useAuth();
   const { darkMode, setDarkMode } = useTheme();
   const {
     notificationsEnabled,
@@ -58,6 +59,15 @@ export function SettingsPage() {
   const [passwordSaving, setPasswordSaving] = useState(false);
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null);
+
+  const [downloadPinConfigured, setDownloadPinConfigured] = useState(false);
+  const [downloadPinLoading, setDownloadPinLoading] = useState(true);
+  const [downloadPin, setDownloadPin] = useState('');
+  const [downloadPinConfirm, setDownloadPinConfirm] = useState('');
+  const [downloadPinPassword, setDownloadPinPassword] = useState('');
+  const [downloadPinSaving, setDownloadPinSaving] = useState(false);
+  const [downloadPinError, setDownloadPinError] = useState<string | null>(null);
+  const [downloadPinSuccess, setDownloadPinSuccess] = useState<string | null>(null);
 
   const onNotifToggle = useCallback(
     (enabled: boolean) => {
@@ -80,6 +90,90 @@ export function SettingsPage() {
     setPasswordError(null);
     setPasswordSuccess(null);
   }, [currentPassword, newPassword, confirmPassword]);
+
+  useEffect(() => {
+    setDownloadPinError(null);
+    setDownloadPinSuccess(null);
+  }, [downloadPin, downloadPinConfirm, downloadPinPassword]);
+
+  const loadDownloadPinStatus = useCallback(async () => {
+    if (!businessId) {
+      setDownloadPinConfigured(false);
+      setDownloadPinLoading(false);
+      return;
+    }
+    setDownloadPinLoading(true);
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('seller_download_pin')
+      .eq('user_id', businessId)
+      .maybeSingle();
+    if (error) {
+      setDownloadPinError(error.message);
+      setDownloadPinConfigured(false);
+    } else {
+      setDownloadPinConfigured(!!String(data?.seller_download_pin ?? '').trim());
+    }
+    setDownloadPinLoading(false);
+  }, [businessId]);
+
+  useEffect(() => {
+    void loadDownloadPinStatus();
+  }, [loadDownloadPinStatus]);
+
+  async function onSetDownloadPin(e: FormEvent) {
+    e.preventDefault();
+    if (!user?.email) {
+      setDownloadPinError('Missing account email.');
+      return;
+    }
+    setDownloadPinError(null);
+    setDownloadPinSuccess(null);
+
+    if (!downloadPin || !downloadPinConfirm || !downloadPinPassword) {
+      setDownloadPinError('Please fill in all fields.');
+      return;
+    }
+    if (downloadPin.length < 4) {
+      setDownloadPinError('PIN must be at least 4 characters.');
+      return;
+    }
+    if (downloadPin.length > 32) {
+      setDownloadPinError('PIN must be at most 32 characters.');
+      return;
+    }
+    if (downloadPin !== downloadPinConfirm) {
+      setDownloadPinError('PIN and confirm PIN do not match.');
+      return;
+    }
+
+    setDownloadPinSaving(true);
+    const { error: verifyError } = await supabase.auth.signInWithPassword({
+      email: user.email,
+      password: downloadPinPassword,
+    });
+    if (verifyError) {
+      setDownloadPinError('Account password is incorrect.');
+      setDownloadPinSaving(false);
+      return;
+    }
+
+    const { error: pinError } = await supabase.rpc('set_seller_download_pin', {
+      p_new_pin: downloadPin.trim(),
+    });
+    if (pinError) {
+      setDownloadPinError(pinError.message);
+      setDownloadPinSaving(false);
+      return;
+    }
+
+    setDownloadPin('');
+    setDownloadPinConfirm('');
+    setDownloadPinPassword('');
+    setDownloadPinConfigured(true);
+    setDownloadPinSuccess('Seller app download PIN updated. The download site will use this PIN immediately.');
+    setDownloadPinSaving(false);
+  }
 
   async function onChangePassword(e: FormEvent) {
     e.preventDefault();
@@ -188,9 +282,8 @@ export function SettingsPage() {
         <form className="settings-password-form" onSubmit={(e) => void onChangePassword(e)}>
           <div className="field">
             <label htmlFor="current-password">Current password</label>
-            <input
+            <PasswordInput
               id="current-password"
-              type="password"
               autoComplete="current-password"
               placeholder="Enter current password"
               value={currentPassword}
@@ -199,9 +292,8 @@ export function SettingsPage() {
           </div>
           <div className="field">
             <label htmlFor="new-password">New password</label>
-            <input
+            <PasswordInput
               id="new-password"
-              type="password"
               autoComplete="new-password"
               placeholder="Enter new password (min. 6 characters)"
               value={newPassword}
@@ -210,9 +302,8 @@ export function SettingsPage() {
           </div>
           <div className="field">
             <label htmlFor="confirm-password">Confirm new password</label>
-            <input
+            <PasswordInput
               id="confirm-password"
-              type="password"
               autoComplete="new-password"
               placeholder="Confirm new password"
               value={confirmPassword}
@@ -221,6 +312,72 @@ export function SettingsPage() {
           </div>
           <button type="submit" className="btn btn-primary btn-sm" disabled={passwordSaving}>
             {passwordSaving ? 'Updating…' : 'Change password'}
+          </button>
+        </form>
+      </SettingsSection>
+
+      <SettingsSection
+        title="Seller app download PIN"
+        subtitle="PIN required on the public download page to unlock the Seller app APK"
+        icon={
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
+            <rect x="5" y="11" width="14" height="10" rx="2" stroke="currentColor" strokeWidth="1.8" />
+            <path
+              d="M8 11V8a4 4 0 118 0v3"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+            />
+          </svg>
+        }
+      >
+        {downloadPinLoading ? <p className="muted-block">Loading PIN status…</p> : null}
+        {!downloadPinLoading ? (
+          <p className="muted-block settings-account-email">
+            Status:{' '}
+            <strong>{downloadPinConfigured ? 'PIN is set' : 'No PIN set yet — seller download stays locked'}</strong>
+          </p>
+        ) : null}
+        <p className="muted-block settings-pin-hint">
+          Single-store download page — only this admin PIN is checked. No store code needed on the download site.
+        </p>
+        {downloadPinError ? <p className="error-text module-alert">{downloadPinError}</p> : null}
+        {downloadPinSuccess ? <p className="success-text module-alert">{downloadPinSuccess}</p> : null}
+        <form className="settings-password-form" onSubmit={(e) => void onSetDownloadPin(e)}>
+          <div className="field">
+            <label htmlFor="download-pin">Set PIN to download seller app</label>
+            <PasswordInput
+              id="download-pin"
+              autoComplete="new-password"
+              placeholder="Enter new PIN (min. 4 characters)"
+              value={downloadPin}
+              onChange={(e) => setDownloadPin(e.target.value)}
+              maxLength={32}
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="download-pin-confirm">Confirm PIN</label>
+            <PasswordInput
+              id="download-pin-confirm"
+              autoComplete="new-password"
+              placeholder="Confirm new PIN"
+              value={downloadPinConfirm}
+              onChange={(e) => setDownloadPinConfirm(e.target.value)}
+              maxLength={32}
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="download-pin-password">Enter account password to verify it&apos;s you</label>
+            <PasswordInput
+              id="download-pin-password"
+              autoComplete="current-password"
+              placeholder="Your admin login password"
+              value={downloadPinPassword}
+              onChange={(e) => setDownloadPinPassword(e.target.value)}
+            />
+          </div>
+          <button type="submit" className="btn btn-primary btn-sm" disabled={downloadPinSaving}>
+            {downloadPinSaving ? 'Saving…' : downloadPinConfigured ? 'Update download PIN' : 'Set download PIN'}
           </button>
         </form>
       </SettingsSection>

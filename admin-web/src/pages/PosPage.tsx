@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { useAuth } from '../auth/AuthProvider';
-import { ModulePageHeader } from '../components/ModulePageHeader';
 import { money, publicWrsAssetUrl } from '../lib/format';
 import { isLowStock, stockLabel, tracksStock } from '../lib/inventoryStock';
 import { type PosPaymentMethod } from '../lib/posPayment';
@@ -44,7 +43,7 @@ const POS_PAYMENT_METHODS: { id: PosPaymentMethod; label: string; icon: 'cash' |
 ];
 
 export function PosPage() {
-  const { businessId, profile } = useAuth();
+  const { businessId } = useAuth();
   const [products, setProducts] = useState<ProductRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [cart, setCart] = useState<CartLine[]>([]);
@@ -56,9 +55,6 @@ export function PosPage() {
   const [customerName, setCustomerName] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<PosPaymentMethod>('cash');
   const [cashReceived, setCashReceived] = useState('');
-
-  const branch =
-    profile?.display_name?.trim() ? `${profile.display_name.trim()} · Zoda WRS` : 'Zoda WRS Main Branch';
 
   const loadProducts = useCallback(async () => {
     if (!businessId) return;
@@ -249,11 +245,6 @@ export function PosPage() {
 
   return (
     <div className="pos-layout">
-      <ModulePageHeader
-        title="POS"
-        subtitle="Walk-in Sales • Fast • Easy • Reliable"
-        branch={branch}
-      />
       {error ? <p className="error-text module-alert">{error}</p> : null}
       {success ? <p className="success-text module-alert">{success}</p> : null}
 
@@ -342,41 +333,63 @@ export function PosPage() {
               <p className="field-hint">Required for unpaid orders. Saved names appear in Customer list.</p>
             </label>
 
-            <div className="pos-cart-lines">
-            {cart.length === 0 ? (
-              <p className="muted-block">Tap + on a product to add it here.</p>
-            ) : (
-              cart.map((l) => {
-                const img = publicWrsAssetUrl(supabase, l.image_url);
-                return (
-                  <div key={l.productId} className="pos-cart-line">
-                    <div className="pos-cart-line-thumb">{img ? <img src={img} alt="" /> : null}</div>
-                    <div className="pos-cart-line-body">
-                      <div className="pos-cart-line-title">{l.name}</div>
-                      <div className="pos-cart-line-unit">{money(l.unitPrice)} / pc</div>
-                      <div className="pos-cart-line-foot">
-                        <div className="qty-stepper">
-                          <button type="button" aria-label="Decrease quantity" onClick={() => setLineQty(l.productId, l.quantity - 1)}>
-                            −
-                          </button>
-                          <span>{l.quantity}</span>
-                          <button type="button" aria-label="Increase quantity" onClick={() => setLineQty(l.productId, l.quantity + 1)}>
-                            +
-                          </button>
+            <div
+              className={`pos-cart-lines-scroll${cart.length > 3 ? ' pos-cart-lines-scroll--overflow' : ''}`}
+              aria-label="Cart items"
+            >
+              <div className="pos-cart-lines">
+                {cart.length === 0 ? (
+                  <p className="muted-block">Tap + on a product to add it here.</p>
+                ) : (
+                  cart.map((l) => {
+                    const img = publicWrsAssetUrl(supabase, l.image_url);
+                    return (
+                      <div key={l.productId} className="pos-cart-line">
+                        <div className="pos-cart-line-thumb">{img ? <img src={img} alt="" /> : null}</div>
+                        <div className="pos-cart-line-body">
+                          <div className="pos-cart-line-title">{l.name}</div>
+                          <div className="pos-cart-line-unit">{money(l.unitPrice)} / pc</div>
+                          <div className="pos-cart-line-foot">
+                            <div className="qty-stepper">
+                              <button
+                                type="button"
+                                aria-label="Decrease quantity"
+                                onClick={() => setLineQty(l.productId, l.quantity - 1)}
+                              >
+                                −
+                              </button>
+                              <span>{l.quantity}</span>
+                              <button
+                                type="button"
+                                aria-label="Increase quantity"
+                                onClick={() => setLineQty(l.productId, l.quantity + 1)}
+                              >
+                                +
+                              </button>
+                            </div>
+                            <span className="pos-cart-line-total">{money(l.unitPrice * l.quantity)}</span>
+                            <button
+                              type="button"
+                              className="pos-icon-btn danger"
+                              aria-label="Remove"
+                              onClick={() => removeLine(l.productId)}
+                            >
+                              <TrashIcon />
+                            </button>
+                          </div>
                         </div>
-                        <span className="pos-cart-line-total">{money(l.unitPrice * l.quantity)}</span>
-                        <button type="button" className="pos-icon-btn danger" aria-label="Remove" onClick={() => removeLine(l.productId)}>
-                          <TrashIcon />
-                        </button>
                       </div>
-                    </div>
-                  </div>
-                );
-              })
-            )}
+                    );
+                  })
+                )}
+              </div>
             </div>
+            {cart.length > 3 ? (
+              <p className="field-hint pos-cart-scroll-hint">Scroll to see all {cart.length} items</p>
+            ) : null}
+          </div>
 
-            <div className="pos-checkout-section">
+          <div className="pos-checkout-section">
             <h3 className="pos-checkout-heading">Product summary</h3>
             <div className="pos-totals">
               <div className="pos-total-row">
@@ -434,7 +447,6 @@ export function PosPage() {
             ) : (
               <p className="muted-block pos-gcash-hint">GCash payment — mark paid when reference is confirmed.</p>
             )}
-            </div>
           </div>
 
           <div className="pos-cart-actions">

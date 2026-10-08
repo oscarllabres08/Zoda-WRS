@@ -403,7 +403,6 @@ export default function DeliveryScreen() {
                 <Animated.View key={order.id} entering={FadeInDown.delay(index * 24).duration(200)}>
                   <DeliveredOrderRow
                     order={order}
-                    isNew={isNewOrder(order.id)}
                     avatarUrl={publicWrsAssetUrl(avatarPathByCustomerId[order.customer_id])}
                     onOpen={() => openOrder(order.id)}
                     isLast={index === deliveredPageItems.length - 1}
@@ -426,7 +425,11 @@ export default function DeliveryScreen() {
 
         {sorted.map((order, index) =>
           tab !== 'delivered' ? (
-            <Animated.View key={order.id} entering={FadeInDown.delay(index * 35).duration(220)}>
+            <Animated.View
+              key={order.id}
+              entering={FadeInDown.delay(index * 35).duration(220)}
+              style={{ width: '100%' }}
+            >
               <ActiveDeliveryCard
                 order={order}
                 isNew={isNewOrder(order.id)}
@@ -655,17 +658,30 @@ function ActiveDeliveryCard({
   const km = orderDistanceKm(order, distanceReference);
   const distanceLabel = formatOrderDistance(km);
   const statusLabel = order.status.replaceAll('_', ' ');
+  const hasPin = order.latitude != null && order.longitude != null;
 
   return (
     <Card
       style={
         isNew
-          ? { borderWidth: 2, borderColor: 'rgba(239,68,68,0.55)', backgroundColor: 'rgba(254,242,242,0.35)' }
-          : undefined
+          ? {
+              borderWidth: 2,
+              borderColor: 'rgba(239,68,68,0.55)',
+              backgroundColor: '#FEF2F2',
+              overflow: 'hidden',
+            }
+          : { overflow: 'hidden' }
       }
     >
-      <Pressable onPress={onOpen}>
-        <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
+      <Pressable
+        onPress={onOpen}
+        style={({ pressed }) => ({
+          width: '100%',
+          backgroundColor: 'transparent',
+          opacity: pressed ? 0.88 : 1,
+        })}
+      >
+        <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10, width: '100%' }}>
           <View
             style={{
               width: 42,
@@ -674,18 +690,19 @@ function ActiveDeliveryCard({
               backgroundColor: 'rgba(18,101,214,0.1)',
               alignItems: 'center',
               justifyContent: 'center',
+              flexShrink: 0,
             }}
           >
             <Ionicons name="navigate-outline" size={22} color={p} />
           </View>
-          <View style={{ flex: 1 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <Text weight="extrabold" style={{ flex: 1, minWidth: 120 }}>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Text weight="extrabold" style={{ flex: 1, minWidth: 0 }} numberOfLines={1}>
                 {order.customer_name}
               </Text>
               {isNew ? <NewOrderBadge /> : null}
             </View>
-            <Text variant="muted" weight="semibold" style={{ marginTop: 4 }}>
+            <Text variant="muted" weight="semibold" style={{ marginTop: 4 }} numberOfLines={2}>
               {order.delivery_address}
             </Text>
             <Text variant="chip" weight="bold" style={{ marginTop: 8, color: p }}>
@@ -693,14 +710,15 @@ function ActiveDeliveryCard({
               {distanceLabel ? ` · ~ ${distanceLabel}` : ''}
             </Text>
           </View>
-          <Ionicons name="chevron-forward" size={20} color={theme.colors.muted} />
+          <Ionicons name="chevron-forward" size={20} color={theme.colors.muted} style={{ flexShrink: 0, marginTop: 2 }} />
         </View>
       </Pressable>
-      {order.latitude != null && order.longitude != null ? (
+      {hasPin ? (
         <Pressable
           onPress={() => openMaps(order.latitude!, order.longitude!, order.delivery_address)}
-          style={{
+          style={({ pressed }) => ({
             marginTop: 12,
+            width: '100%',
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'center',
@@ -709,7 +727,8 @@ function ActiveDeliveryCard({
             borderRadius: 12,
             borderWidth: 1.5,
             borderColor: p,
-          }}
+            backgroundColor: pressed ? 'rgba(18,101,214,0.06)' : '#FFFFFF',
+          })}
         >
           <Ionicons name="map-outline" size={18} color={p} />
           <Text weight="extrabold" style={{ color: p }}>

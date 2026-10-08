@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
+import { parseAuthCredentials, sanitizeAuthEmail, sanitizeAuthPassword } from '../../lib/authInputSecurity';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../providers/AuthProvider';
 import { Screen } from '../../ui/components/Screen';
@@ -34,11 +35,15 @@ export default function SignInScreen() {
     setRouteNotice(null);
     setLoading(true);
     try {
-      if (!email.trim() || !password.trim()) {
-        setError('Please enter your email and password.');
+      const creds = parseAuthCredentials(email, password, { mode: 'login' });
+      if (!creds.ok) {
+        setError(creds.error);
         return;
       }
-      const { error: err } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+      const { error: err } = await supabase.auth.signInWithPassword({
+        email: creds.email,
+        password: creds.password,
+      });
       if (err) throw err;
       router.replace('/(tabs)/orders');
     } catch (e) {
@@ -89,19 +94,21 @@ export default function SignInScreen() {
                 <TextField
                   label="Email"
                   value={email}
-                  onChangeText={setEmail}
+                  onChangeText={(t) => setEmail(sanitizeAuthEmail(t))}
                   placeholder="you@example.com"
                   autoCapitalize="none"
                   keyboardType="email-address"
+                  maxLength={254}
                 />
                 <TextField
                   label="Password"
                   value={password}
-                  onChangeText={setPassword}
+                  onChangeText={(t) => setPassword(sanitizeAuthPassword(t))}
                   placeholder="Enter your password"
                   autoCapitalize="none"
                   autoCorrect={false}
                   passwordToggleable
+                  maxLength={128}
                 />
                 {error ? (
                   <Text weight="bold" style={{ color: theme.colors.danger }}>

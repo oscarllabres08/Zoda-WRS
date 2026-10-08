@@ -12,6 +12,7 @@ import {
   posNameFromRowId,
 } from '../lib/posPayment';
 import { supabase } from '../lib/supabase';
+import { markOrderViewed } from '../lib/viewedOrders';
 
 type CustomerRow = {
   id: string;
@@ -140,6 +141,11 @@ export function CustomersPage() {
   const [returnBusyId, setReturnBusyId] = useState<string | null>(null);
   const [selectedEntry, setSelectedEntry] = useState<HistoryEntry | null>(null);
   const [paymentBusy, setPaymentBusy] = useState(false);
+
+  useEffect(() => {
+    if (!businessId || !selectedEntry || selectedEntry.source !== 'order') return;
+    markOrderViewed(businessId, selectedEntry.id);
+  }, [businessId, selectedEntry]);
 
   const load = useCallback(async () => {
     if (!businessId) return;

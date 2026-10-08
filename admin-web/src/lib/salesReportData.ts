@@ -528,6 +528,37 @@ function buildTransactions(orders: OrderRow[], pos: PosRow[]): ExportTransaction
   return rows;
 }
 
+export type DayExportPayload = {
+  dayLabel: string;
+  generatedAt: Date;
+  data: SalesDashboardData;
+  transactions: ExportTransaction[];
+};
+
+export async function fetchDayExportPayload(
+  businessId: string,
+  year: number,
+  monthIndex: number,
+  day: number
+): Promise<DayExportPayload> {
+  const { from, to } = dayBounds(year, monthIndex, day);
+  const productCats = await loadProductCategories(businessId);
+  const { orders, pos } = await fetchRange(businessId, from, to);
+  const data = aggregate(orders, pos, productCats, 'week', from, to);
+  const dayLabel = from.toLocaleDateString('en-US', {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  });
+  return {
+    dayLabel,
+    generatedAt: new Date(),
+    data,
+    transactions: buildTransactions(orders, pos),
+  };
+}
+
 export type MonthExportPayload = {
   monthLabel: string;
   generatedAt: Date;

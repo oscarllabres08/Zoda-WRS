@@ -1,5 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Image, Modal, Platform, Pressable, RefreshControl, ScrollView, useWindowDimensions, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Image,
+  Modal,
+  Platform,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  TextInput,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
@@ -75,6 +86,12 @@ function applySort(list: Product[], mode: SortMode): Product[] {
   return next;
 }
 
+function filterBySearch(list: Product[], query: string): Product[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return list;
+  return list.filter((p) => p.name.toLowerCase().includes(q));
+}
+
 const CARD_RAISE = {
   shadowColor: theme.shadow.ink,
   shadowOpacity: 0.07,
@@ -101,6 +118,7 @@ export default function OrderScreen() {
 
   const [qtyById, setQtyById] = useState<Record<string, number>>({});
   const [browseTab, setBrowseTab] = useState<BrowseTab>('water');
+  const [productSearch, setProductSearch] = useState('');
   const [sortMode, setSortMode] = useState<SortMode>('default');
   const [sortModalOpen, setSortModalOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
@@ -405,14 +423,18 @@ export default function OrderScreen() {
   }
 
   const waterProducts = useMemo(
-    () => applySort(products.filter((p) => (p.category ?? 'water') === 'water'), sortMode),
-    [products, sortMode]
+    () =>
+      filterBySearch(applySort(products.filter((p) => (p.category ?? 'water') === 'water'), sortMode), productSearch),
+    [products, sortMode, productSearch]
   );
 
   const otherProducts = useMemo(
-    () => applySort(products.filter((p) => (p.category ?? 'water') === 'other'), sortMode),
-    [products, sortMode]
+    () =>
+      filterBySearch(applySort(products.filter((p) => (p.category ?? 'water') === 'other'), sortMode), productSearch),
+    [products, sortMode, productSearch]
   );
+
+  const productSearchActive = productSearch.trim().length > 0;
 
   useEffect(() => {
     setQtyById((prev) => {
@@ -988,19 +1010,63 @@ export default function OrderScreen() {
           )}
 
           {step === 'menu' && !loading && !err ? (
-            <View style={{ flexDirection: 'row', gap: 10, marginBottom: theme.spacing.lg }}>
-              <CategoryPill
-                label="Water"
-                icon="water"
-                active={browseTab === 'water'}
-                onPress={() => setBrowseTab('water')}
-              />
-              <CategoryPill
-                label="Others"
-                icon="bag-outline"
-                active={browseTab === 'other'}
-                onPress={() => setBrowseTab('other')}
-              />
+            <View style={{ gap: 12, marginBottom: theme.spacing.lg }}>
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <CategoryPill
+                  label="Water"
+                  icon="water"
+                  active={browseTab === 'water'}
+                  onPress={() => setBrowseTab('water')}
+                />
+                <CategoryPill
+                  label="Others"
+                  icon="bag-outline"
+                  active={browseTab === 'other'}
+                  onPress={() => setBrowseTab('other')}
+                />
+              </View>
+              <View
+                style={{
+                  backgroundColor: '#FFFFFF',
+                  borderWidth: 1,
+                  borderColor: theme.colors.border,
+                  borderRadius: 14,
+                  paddingHorizontal: 12,
+                  paddingVertical: 10,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 10,
+                }}
+              >
+                <Ionicons name="search-outline" size={18} color={theme.colors.muted} />
+                <TextInput
+                  value={productSearch}
+                  onChangeText={setProductSearch}
+                  placeholder={browseTab === 'water' ? 'Search water products' : 'Search other products'}
+                  placeholderTextColor="rgba(106,122,149,0.9)"
+                  style={{ flex: 1, color: theme.colors.text, fontFamily: theme.font.bold, outlineStyle: 'none' }}
+                  autoCorrect={false}
+                  autoCapitalize="none"
+                  returnKeyType="search"
+                />
+                {productSearch ? (
+                  <Pressable
+                    onPress={() => setProductSearch('')}
+                    style={{
+                      width: 32,
+                      height: 32,
+                      borderRadius: 12,
+                      backgroundColor: 'rgba(18,101,214,0.08)',
+                      borderWidth: 1,
+                      borderColor: 'rgba(18,101,214,0.12)',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Ionicons name="close" size={16} color={ORDER_BLUE} />
+                  </Pressable>
+                ) : null}
+              </View>
             </View>
           ) : null}
 
@@ -1063,9 +1129,11 @@ export default function OrderScreen() {
 
                       {waterProducts.length === 0 ? (
                         <Text variant="muted" style={{ marginBottom: 16 }}>
-                          {products.length === 0
-                            ? 'No water products yet. The store may still be setting up catalog items, or products are marked unavailable.'
-                            : 'No water products in this tab — check Others, or ask the seller to set product type to Water and mark items as available.'}
+                          {productSearchActive
+                            ? `No water products match "${productSearch.trim()}".`
+                            : products.length === 0
+                              ? 'No water products yet. The store may still be setting up catalog items, or products are marked unavailable.'
+                              : 'No water products in this tab — check Others, or ask the seller to set product type to Water and mark items as available.'}
                         </Text>
                       ) : (
                         <View style={{ gap: 14 }}>
@@ -1081,7 +1149,7 @@ export default function OrderScreen() {
                         </View>
                       )}
 
-                      {otherProducts.length > 0 ? (
+                      {!productSearchActive && otherProducts.length > 0 ? (
                         <View style={{ marginTop: theme.spacing.xl }}>
                           <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
                             <Text style={{ flex: 1, fontSize: 17, fontFamily: theme.font.extrabold, color: theme.colors.text }}>
@@ -1140,7 +1208,11 @@ export default function OrderScreen() {
                       </View>
 
                       {otherProducts.length === 0 ? (
-                        <Text variant="muted">No other products yet. Water refills and jug sizes are under Water.</Text>
+                        <Text variant="muted">
+                          {productSearchActive
+                            ? `No other products match "${productSearch.trim()}".`
+                            : 'No other products yet. Water refills and jug sizes are under Water.'}
+                        </Text>
                       ) : (
                         <View style={{ gap: 14 }}>
                           {otherProducts.map((p) => (
@@ -1863,9 +1935,9 @@ function WaterProductCard({
     <View
       style={{
         flexDirection: 'row',
-        alignItems: 'center',
-        gap: 14,
-        padding: 16,
+        alignItems: 'flex-start',
+        gap: 12,
+        padding: 14,
         borderRadius: 16,
         backgroundColor: '#fff',
         borderWidth: 1,
@@ -1876,42 +1948,81 @@ function WaterProductCard({
     >
       <View
         style={{
-          width: 88,
-          height: 88,
+          width: 96,
+          height: 96,
           borderRadius: 14,
           overflow: 'hidden',
           backgroundColor: '#F0F4FA',
           borderWidth: 1,
           borderColor: '#E8EAED',
+          flexShrink: 0,
         }}
       >
         {imageUri ? (
           <Image source={{ uri: imageUri }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
         ) : null}
       </View>
-      <View style={{ flex: 1, minWidth: 0 }}>
-        <Text weight="extrabold" numberOfLines={2} style={{ fontSize: 16, color: theme.colors.text }}>
-          {p.name}
-        </Text>
-        <Text style={{ fontSize: 13, fontFamily: theme.font.semibold, color: theme.colors.muted, marginTop: 4 }} numberOfLines={2}>
-          {subtitle}
-        </Text>
-        <Text weight="extrabold" style={{ fontSize: 16, color: ORDER_BLUE, marginTop: 8 }}>
-          {formatMoney(p.price)}
-        </Text>
-        {!p.is_available ? (
-          <Text variant="chip" weight="extrabold" style={{ color: theme.colors.muted, marginTop: 6 }}>
-            Unavailable
+      <View style={{ flex: 1, minWidth: 0, justifyContent: 'space-between', minHeight: 96 }}>
+        <View style={{ minWidth: 0 }}>
+          <Text
+            weight="extrabold"
+            numberOfLines={1}
+            ellipsizeMode="tail"
+            style={{ fontSize: 16, lineHeight: 20, color: theme.colors.text }}
+          >
+            {p.name}
           </Text>
-        ) : null}
-      </View>
-      <View style={{ alignItems: 'flex-end', gap: 6 }}>
-        <StepperPill qty={qty} disabled={!p.is_available} onDelta={onBump} />
-        <Pressable onPress={() => p.is_available && onBump(1)} disabled={!p.is_available} hitSlop={6}>
-          <Text weight="bold" style={{ fontSize: 11, color: ORDER_BLUE }}>
-            Tap to order
+          <Text
+            numberOfLines={2}
+            ellipsizeMode="tail"
+            style={{
+              fontSize: 13,
+              lineHeight: 18,
+              fontFamily: theme.font.semibold,
+              color: theme.colors.muted,
+              marginTop: 4,
+            }}
+          >
+            {subtitle}
           </Text>
-        </Pressable>
+          {!p.is_available ? (
+            <Text variant="chip" weight="extrabold" style={{ color: theme.colors.muted, marginTop: 4 }}>
+              Unavailable
+            </Text>
+          ) : null}
+        </View>
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginTop: 10,
+            gap: 8,
+          }}
+        >
+          <View
+            style={{
+              paddingHorizontal: 12,
+              paddingVertical: 6,
+              borderRadius: 999,
+              backgroundColor: ORDER_BLUE_SOFT,
+              borderWidth: 1,
+              borderColor: 'rgba(0,86,210,0.18)',
+            }}
+          >
+            <Text weight="extrabold" style={{ fontSize: 15, color: ORDER_BLUE }}>
+              {formatMoney(p.price)}
+            </Text>
+          </View>
+          <View style={{ alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
+            <StepperPill qty={qty} disabled={!p.is_available} onDelta={onBump} />
+            <Pressable onPress={() => p.is_available && onBump(1)} disabled={!p.is_available} hitSlop={6}>
+              <Text weight="bold" style={{ fontSize: 11, color: ORDER_BLUE }}>
+                Tap to order
+              </Text>
+            </Pressable>
+          </View>
+        </View>
       </View>
     </View>
   );

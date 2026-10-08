@@ -1,5 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import { emitPendingReminderRefresh } from './pendingReminderEvents';
+
 const viewedKey = (businessId: string) => `seller_viewed_orders_${businessId}`;
 const seededKey = (businessId: string) => `seller_viewed_orders_seeded_${businessId}`;
 
@@ -20,6 +22,7 @@ export async function markOrderViewed(businessId: string, orderId: string): Prom
   if (set.has(orderId)) return;
   set.add(orderId);
   await AsyncStorage.setItem(viewedKey(businessId), JSON.stringify([...set]));
+  emitPendingReminderRefresh();
 }
 
 /** One-time: treat existing orders as already seen so only newly arriving orders show NEW. */

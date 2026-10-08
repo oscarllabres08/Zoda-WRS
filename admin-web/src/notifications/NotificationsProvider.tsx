@@ -161,15 +161,17 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
               n.data && typeof n.data === 'object' && !Array.isArray(n.data)
                 ? (n.data as Record<string, unknown>)
                 : {};
+            const kind = String(n.kind ?? rowData.kind ?? '');
             setToast({
               id,
               title: String(n.title ?? 'Notification'),
               body: String(n.body ?? ''),
-              kind: String(n.kind ?? rowData.kind ?? ''),
+              kind,
               orderId: (n.order_id as string | undefined) ?? (rowData.orderId as string | undefined),
             });
             if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-            toastTimerRef.current = setTimeout(() => setToast(null), 3000);
+            const toastMs = kind === 'pending_order_reminder' ? 6000 : 3000;
+            toastTimerRef.current = setTimeout(() => setToast(null), toastMs);
 
             if (prefsRef.current.soundEnabled) {
               playNotificationSound();

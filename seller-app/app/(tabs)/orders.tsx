@@ -539,7 +539,6 @@ export default function OrdersScreen() {
                         router.push(`/order/${item.id}`);
                       }}
                       distanceText={distanceText}
-                      compact={!isTablet && width < 400}
                     />
                   </Animated.View>
                 );
@@ -552,95 +551,79 @@ export default function OrdersScreen() {
   );
 }
 
+function paymentBadgeStyle(tone: 'paid' | 'gcash' | 'unpaid') {
+  if (tone === 'paid') {
+    return {
+      backgroundColor: 'rgba(57,181,74,0.12)',
+      borderColor: 'rgba(57,181,74,0.28)',
+      color: theme.colors.success,
+      icon: 'checkmark-circle' as const,
+    };
+  }
+  if (tone === 'gcash') {
+    return {
+      backgroundColor: 'rgba(18,101,214,0.10)',
+      borderColor: 'rgba(18,101,214,0.22)',
+      color: theme.colors.primary,
+      icon: 'wallet-outline' as const,
+    };
+  }
+  return {
+    backgroundColor: 'rgba(245,158,11,0.12)',
+    borderColor: 'rgba(245,158,11,0.28)',
+    color: '#B45309',
+    icon: 'time-outline' as const,
+  };
+}
+
 function PaymentStatusBadge({ paid, utang, gcash }: { paid: boolean; utang: boolean; gcash?: boolean }) {
-  if (paid) {
-    return (
-      <View
-        style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: 5,
-          paddingVertical: 5,
-          paddingHorizontal: 10,
-          borderRadius: 999,
-          backgroundColor: 'rgba(57,181,74,0.12)',
-          borderWidth: 1,
-          borderColor: 'rgba(57,181,74,0.28)',
-        }}
-      >
-        <Ionicons name="checkmark-circle" size={15} color={theme.colors.success} />
-        <Text weight="extrabold" style={{ fontSize: 12, color: theme.colors.success }}>
-          Paid
-        </Text>
-      </View>
-    );
-  }
-  if (gcash) {
-    return (
-      <View
-        style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: 5,
-          paddingVertical: 5,
-          paddingHorizontal: 10,
-          borderRadius: 999,
-          backgroundColor: 'rgba(18,101,214,0.10)',
-          borderWidth: 1,
-          borderColor: 'rgba(18,101,214,0.22)',
-        }}
-      >
-        <Ionicons name="wallet-outline" size={15} color={theme.colors.primary} />
-        <Text weight="extrabold" style={{ fontSize: 12, color: theme.colors.primary }}>
-          GCash payment
-        </Text>
-      </View>
-    );
-  }
-  const label = utang ? 'Utang' : 'Unpaid';
+  const tone = paid ? 'paid' : gcash ? 'gcash' : 'unpaid';
+  const label = paid ? 'Paid' : gcash ? 'GCash' : utang ? 'Utang' : 'Unpaid';
+  const s = paymentBadgeStyle(tone);
+
   return (
     <View
       style={{
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 5,
-        paddingVertical: 5,
-        paddingHorizontal: 10,
-        borderRadius: 999,
-        backgroundColor: 'rgba(245,158,11,0.12)',
+        gap: 4,
+        paddingVertical: 4,
+        paddingHorizontal: 8,
+        borderRadius: 8,
+        backgroundColor: s.backgroundColor,
         borderWidth: 1,
-        borderColor: 'rgba(245,158,11,0.28)',
+        borderColor: s.borderColor,
       }}
     >
-      <Ionicons name="time-outline" size={15} color={theme.colors.warning} />
-      <Text weight="extrabold" style={{ fontSize: 12, color: '#B45309' }}>
+      <Ionicons name={s.icon} size={13} color={s.color} />
+      <Text weight="extrabold" style={{ fontSize: 11, color: s.color }}>
         {label}
       </Text>
     </View>
   );
 }
 
-function ViewDetailsButton({ onPress, fullWidth }: { onPress: () => void; fullWidth?: boolean }) {
+function ViewDetailsButton({ onPress }: { onPress: () => void }) {
   return (
     <GradientPressable
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel="View order details"
-      style={fullWidth ? { width: '100%' } : { alignSelf: 'stretch', minWidth: 118 }}
+      style={{ flexShrink: 0, borderRadius: 10 }}
       innerStyle={{
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        gap: 6,
-        paddingVertical: 12,
-        paddingHorizontal: 14,
+        gap: 4,
+        paddingVertical: 8,
+        paddingHorizontal: 10,
       }}
     >
-      <Ionicons name="eye-outline" size={18} color={theme.colors.onPrimary} />
-      <Text weight="extrabold" style={{ color: theme.colors.onPrimary, fontSize: 13 }}>
-        View Details
+      <Ionicons name="eye-outline" size={15} color={theme.colors.onPrimary} />
+      <Text weight="extrabold" style={{ color: theme.colors.onPrimary, fontSize: 12 }}>
+        View
       </Text>
-      <Ionicons name="chevron-forward" size={16} color={theme.colors.onPrimary} />
+      <Ionicons name="chevron-forward" size={14} color={theme.colors.onPrimary} />
     </GradientPressable>
   );
 }
@@ -651,14 +634,12 @@ function OrderCard({
   customerAvatarUrl,
   onViewDetails,
   distanceText,
-  compact = false,
 }: {
   order: OrderRow;
   isNew?: boolean;
   customerAvatarUrl?: string | null;
   onViewDetails: () => void;
   distanceText?: string | null;
-  compact?: boolean;
 }) {
   const avatarUri = customerAvatarUrl ?? null;
   const customerInitial = (order.customer_name.trim()[0] ?? '?').toUpperCase();
@@ -673,117 +654,113 @@ function OrderCard({
         ? `~ ${distanceText}`
         : distanceText
       : null;
+  const locationLine = [distanceLabel, fullAddress].filter(Boolean).join(' · ');
 
   return (
     <Card
       accessibilityLabel={`Order: ${order.customer_name}${isNew ? ', new order' : ''}`}
       style={{
-        borderRadius: 16,
+        borderRadius: 14,
         borderWidth: isNew ? 2 : 1,
         borderColor: isNew ? 'rgba(229,72,77,0.45)' : theme.colors.border,
         backgroundColor: theme.colors.card,
-        paddingVertical: 14,
-        paddingHorizontal: 14,
+        paddingVertical: 12,
+        paddingHorizontal: 12,
+        overflow: 'hidden',
       }}
     >
-      <View style={{ flexDirection: compact ? 'column' : 'row', gap: 12, alignItems: compact ? 'stretch' : 'center' }}>
-        <View style={{ flex: 1, flexDirection: 'row', gap: 12, minWidth: 0 }}>
-          <View
-            style={{
-              width: 52,
-              height: 52,
-              borderRadius: 26,
-              overflow: 'hidden',
-              borderWidth: 2,
-              borderColor: theme.colors.bgTint,
-              backgroundColor: theme.colors.bgSoft,
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            {avatarUri ? (
-              <Image source={{ uri: avatarUri }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
-            ) : (
-              <Text weight="extrabold" style={{ color: theme.colors.primaryDark, fontSize: 20 }}>
-                {customerInitial}
-              </Text>
-            )}
-          </View>
+      {isNew ? (
+        <View style={{ position: 'absolute', top: 10, right: 10, zIndex: 2 }}>
+          <NewOrderBadge />
+        </View>
+      ) : null}
 
-          <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-              <Text weight="extrabold" style={{ fontSize: 16, color: theme.colors.text, flexShrink: 1 }}>
-                {order.customer_name}
-              </Text>
-              {isNew ? <NewOrderBadge /> : null}
-            </View>
+      <View style={{ flexDirection: 'row', gap: 10, alignItems: 'flex-start', paddingRight: isNew ? 52 : 0 }}>
+        <View
+          style={{
+            width: 44,
+            height: 44,
+            borderRadius: 22,
+            overflow: 'hidden',
+            borderWidth: 1.5,
+            borderColor: theme.colors.bgTint,
+            backgroundColor: theme.colors.bgSoft,
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+          }}
+        >
+          {avatarUri ? (
+            <Image source={{ uri: avatarUri }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+          ) : (
+            <Text weight="extrabold" style={{ color: theme.colors.primaryDark, fontSize: 17 }}>
+              {customerInitial}
+            </Text>
+          )}
+        </View>
 
-            {distanceLabel ? (
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                <Ionicons name="navigate-outline" size={14} color={theme.colors.primary} />
-                <Text weight="semibold" style={{ fontSize: 13, color: theme.colors.primary }}>
-                  {distanceLabel}
-                </Text>
-              </View>
-            ) : distanceText === 'No map pin' ? (
-              <Text variant="muted" weight="semibold" style={{ fontSize: 12 }}>
-                No map pin on this order
-              </Text>
-            ) : null}
+        <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
+          <Text weight="extrabold" numberOfLines={1} style={{ fontSize: 15, color: theme.colors.text, paddingRight: 4 }}>
+            {order.customer_name}
+          </Text>
+          {locationLine ? (
+            <Text weight="semibold" numberOfLines={2} style={{ fontSize: 12, lineHeight: 17, color: theme.colors.muted }}>
+              {locationLine}
+            </Text>
+          ) : distanceText === 'No map pin' ? (
+            <Text variant="muted" weight="semibold" style={{ fontSize: 12 }}>
+              No map pin on this order
+            </Text>
+          ) : null}
+        </View>
+      </View>
 
-            <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 5 }}>
-              <Ionicons name="home-outline" size={14} color={theme.colors.primary} style={{ marginTop: 2 }} />
-              <Text weight="semibold" numberOfLines={2} style={{ flex: 1, fontSize: 13, lineHeight: 18, color: theme.colors.muted }}>
-                {fullAddress || '—'}
-              </Text>
-            </View>
+      <View
+        style={{
+          marginTop: 10,
+          paddingTop: 10,
+          borderTopWidth: 1,
+          borderTopColor: theme.colors.border,
+          gap: 8,
+        }}
+      >
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+          <PaymentStatusBadge paid={isPaid} utang={isUtang && !isPaid} gcash={isGcash && !isPaid} />
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+            <Ionicons name="cube-outline" size={13} color={theme.colors.muted} />
+            <Text weight="extrabold" style={{ fontSize: 13, color: theme.colors.text }}>
+              {units} item{units === 1 ? '' : 's'} · {formatMoney(total)}
+            </Text>
           </View>
         </View>
 
-        <View
-          style={{
-            alignItems: compact ? 'flex-start' : 'flex-end',
-            justifyContent: 'center',
-            gap: 6,
-            minWidth: compact ? undefined : 120,
-          }}
-        >
-          <PaymentStatusBadge paid={isPaid} utang={isUtang && !isPaid} gcash={isGcash && !isPaid} />
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-            <Ionicons name="cube-outline" size={14} color={theme.colors.muted} />
-            <Text weight="semibold" style={{ fontSize: 13, color: theme.colors.text }}>
-              {units} item{units === 1 ? '' : 's'} • {formatMoney(total)}
-            </Text>
-          </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-            <Ionicons name="time-outline" size={14} color={theme.colors.muted} />
-            <Text variant="muted" weight="semibold" style={{ fontSize: 12 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flex: 1, minWidth: 0 }}>
+            <Ionicons name="time-outline" size={13} color={theme.colors.muted} />
+            <Text variant="muted" weight="semibold" numberOfLines={1} style={{ fontSize: 11, flex: 1 }}>
               {formatOrderCardTimestamp(order.created_at)}
             </Text>
           </View>
+          <ViewDetailsButton onPress={onViewDetails} />
         </View>
-
-        {!compact ? <ViewDetailsButton onPress={onViewDetails} /> : null}
       </View>
-
-      {compact ? <View style={{ marginTop: 12 }}><ViewDetailsButton onPress={onViewDetails} fullWidth /></View> : null}
 
       {order.notes ? (
         <View
           style={{
-            marginTop: 10,
-            paddingVertical: 8,
-            paddingHorizontal: 10,
-            borderRadius: 10,
+            marginTop: 8,
+            paddingVertical: 6,
+            paddingHorizontal: 8,
+            borderRadius: 8,
             backgroundColor: theme.colors.bgSoft,
             borderWidth: 1,
             borderColor: theme.colors.border,
           }}
         >
-          <Text variant="muted" weight="bold" style={{ fontSize: 11 }}>
+          <Text variant="muted" weight="bold" style={{ fontSize: 10 }}>
             Note
           </Text>
-          <Text weight="semibold" numberOfLines={2} style={{ marginTop: 2, fontSize: 13 }}>
+          <Text weight="semibold" numberOfLines={2} style={{ marginTop: 2, fontSize: 12 }}>
             {order.notes}
           </Text>
         </View>

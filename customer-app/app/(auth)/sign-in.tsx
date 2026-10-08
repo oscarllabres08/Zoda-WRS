@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, View } from 'react-native';
 import { useRouter } from 'expo-router';
 
+import { parseAuthCredentials, sanitizeAuthEmail, sanitizeAuthPassword } from '../../lib/authInputSecurity';
 import { supabase } from '../../lib/supabase';
 import { Screen } from '../../ui/components/Screen';
 import { Card } from '../../ui/components/Card';
@@ -23,11 +24,15 @@ export default function SignInScreen() {
     setError(null);
     setLoading(true);
     try {
-      if (!email.trim() || !password.trim()) {
-        setError('Please enter your email and password.');
+      const creds = parseAuthCredentials(email, password, { mode: 'login' });
+      if (!creds.ok) {
+        setError(creds.error);
         return;
       }
-      const { error: err } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+      const { error: err } = await supabase.auth.signInWithPassword({
+        email: creds.email,
+        password: creds.password,
+      });
       if (err) throw err;
       router.replace('/(tabs)');
     } catch (e) {
@@ -73,15 +78,24 @@ export default function SignInScreen() {
           <View style={{ marginTop: theme.spacing.md, gap: theme.spacing.sm }}>
             <Card>
               <View style={{ gap: 10 }}>
-                <TextField label="Email" value={email} onChangeText={setEmail} placeholder="you@example.com" autoCapitalize="none" />
+                <TextField
+                  label="Email"
+                  value={email}
+                  onChangeText={(t) => setEmail(sanitizeAuthEmail(t))}
+                  placeholder="you@example.com"
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                  maxLength={254}
+                />
                 <TextField
                   label="Password"
                   value={password}
-                  onChangeText={setPassword}
+                  onChangeText={(t) => setPassword(sanitizeAuthPassword(t))}
                   placeholder="Enter your password"
                   autoCapitalize="none"
                   autoCorrect={false}
                   passwordToggleable
+                  maxLength={128}
                 />
                 {error ? (
                   <Text weight="bold" style={{ color: theme.colors.danger }}>
@@ -97,6 +111,18 @@ export default function SignInScreen() {
                 Create account
               </Text>
             </Pressable>
+
+            <View style={{ alignItems: 'center', marginTop: 8, gap: 4 }}>
+              <Text variant="muted" style={{ fontSize: 12, textAlign: 'center' }}>
+                <Text style={{ fontSize: 12 }} onPress={() => router.push('/legal/terms')}>
+                  Terms & Conditions
+                </Text>
+                {' · '}
+                <Text style={{ fontSize: 12 }} onPress={() => router.push('/legal/privacy')}>
+                  Privacy Policy
+                </Text>
+              </Text>
+            </View>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>

@@ -23,6 +23,7 @@ export function TextField({
 }) {
   const [obscured, setObscured] = useState(true);
   const resolvedPlaceholder = placeholder ?? defaultInputPlaceholder(label, editable);
+  const usePasswordToggle = passwordToggleable || secureTextEntry;
 
   const baseInputStyle = {
     color: theme.colors.text,
@@ -41,7 +42,7 @@ export function TextField({
       <Text variant="muted" weight="bold">
         {label}
       </Text>
-      {passwordToggleable ? (
+      {usePasswordToggle ? (
         <View
           style={{
             flexDirection: 'row',

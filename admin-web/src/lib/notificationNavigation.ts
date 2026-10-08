@@ -12,7 +12,7 @@ export function navigateFromAdminNotification(navigate: NavigateFunction, n: Not
     navigate('/staff');
     return;
   }
-  if (kind === 'new_order' || kind === 'order_activity' || n.order_id) {
+  if (kind === 'new_order' || kind === 'order_activity' || kind === 'pending_order_reminder' || n.order_id) {
     navigate('/');
     return;
   }

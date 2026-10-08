@@ -6,6 +6,8 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 
 import { useAuth } from '../auth/AuthProvider';
 import { AdminNotificationsButton } from '../components/AdminNotificationsButton';
+import { PendingOrderReminderBanner } from '../components/PendingOrderReminderBanner';
+import { usePendingOrderReminder } from '../hooks/usePendingOrderReminder';
 import { useBusinessMode, type BusinessMode } from '../business/BusinessModeProvider';
 import { supabase } from '../lib/supabase';
 
@@ -341,6 +343,8 @@ export function AdminLayout() {
 
   const [navOpen, setNavOpen] = useState(false);
 
+  const { staleOrders } = usePendingOrderReminder(isLaundry ? null : businessId);
+
   const wideMain =
     location.pathname === '/pos' ||
     location.pathname === '/inventory' ||
@@ -648,6 +652,8 @@ export function AdminLayout() {
       <main className="admin-main">
 
         <div className={`admin-main-inner${wideMain ? ' admin-main-inner--wide' : ''}`}>
+
+          {!isLaundry ? <PendingOrderReminderBanner orders={staleOrders} /> : null}
 
           <Outlet context={{ pendingOrders, refreshPending: loadPending }} />
 

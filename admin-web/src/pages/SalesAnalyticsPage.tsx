@@ -6,11 +6,17 @@ import { CategoryBarChart, SalesBarChart, SalesDonutChart } from '../components/
 
 import { useAuth } from '../auth/AuthProvider';
 
-import { downloadMonthSpreadsheet, downloadYearSpreadsheet } from '../lib/exportSalesSpreadsheet';
+import {
+  downloadDaySpreadsheet,
+  downloadMonthSpreadsheet,
+  downloadYearSpreadsheet,
+} from '../lib/exportSalesSpreadsheet';
 
 import { money } from '../lib/format';
 
 import {
+
+  fetchDayExportPayload,
 
   fetchMonthExportPayload,
 
@@ -32,18 +38,12 @@ import {
 
 
 
-type DisplayGranularity = 'today' | 'month' | 'year';
-
-
+type DisplayGranularity = 'day' | 'month' | 'year';
 
 const DISPLAY_GRANULARITY: { id: DisplayGranularity; label: string }[] = [
-
-  { id: 'today', label: 'Today' },
-
+  { id: 'day', label: 'Day' },
   { id: 'month', label: 'Month' },
-
   { id: 'year', label: 'Year' },
-
 ];
 
 
@@ -84,19 +84,13 @@ export function SalesAnalyticsPage() {
 
   const [loading, setLoading] = useState(true);
 
-  const [exporting, setExporting] = useState<'month' | 'year' | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   const [exportError, setExportError] = useState<string | null>(null);
 
   const [selectedSale, setSelectedSale] = useState<RecentSaleRow | null>(null);
 
   const [recentVisible, setRecentVisible] = useState(RECENT_SALES_PAGE);
-
-  const now = new Date();
-
-  const [exportYear, setExportYear] = useState(now.getFullYear());
-
-  const [exportMonth, setExportMonth] = useState(now.getMonth());
 
   const { year: filterYear, month: filterMonth, day: filterDay } = useMemo(
 
@@ -109,7 +103,7 @@ export function SalesAnalyticsPage() {
 
 
   const analyticsMode: SalesDisplayMode =
-    displayGranularity === 'today' ? 'today' : displayGranularity === 'month' ? 'day' : 'month';
+    displayGranularity === 'day' ? 'today' : displayGranularity === 'month' ? 'day' : 'month';
 
 
 
@@ -142,29 +136,15 @@ export function SalesAnalyticsPage() {
 
   }, [load]);
 
-  const compactDateLabel = useMemo(() => {
-    const d = new Date(filterYear, filterMonth, filterDay);
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-  }, [filterYear, filterMonth, filterDay]);
-
-
-
   const filterLabel = useMemo(() => {
 
-    if (displayGranularity === 'today') {
-
+    if (displayGranularity === 'day') {
       return new Date(filterYear, filterMonth, filterDay).toLocaleDateString('en-US', {
-
         weekday: 'long',
-
         month: 'long',
-
         day: 'numeric',
-
         year: 'numeric',
-
       });
-
     }
 
     if (displayGranularity === 'month') {
@@ -177,7 +157,19 @@ export function SalesAnalyticsPage() {
 
   }, [displayGranularity, filterYear, filterMonth, filterDay]);
 
-
+  const pickerLabel = useMemo(() => {
+    if (displayGranularity === 'day') {
+      return new Date(filterYear, filterMonth, filterDay).toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      });
+    }
+    if (displayGranularity === 'month') {
+      return new Date(filterYear, filterMonth, 1).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+    }
+    return String(filterYear);
+  }, [displayGranularity, filterYear, filterMonth, filterDay]);
 
   const chartSlotWidth = displayGranularity === 'year' ? 52 : 44;
 
@@ -199,73 +191,28 @@ export function SalesAnalyticsPage() {
 
 
 
-  async function handleExportMonth() {
-
+  async function handleExport() {
     if (!businessId) return;
-
-    setExporting('month');
-
+    setExporting(true);
     setExportError(null);
-
     try {
-
-      const payload = await fetchMonthExportPayload(businessId, exportYear, exportMonth);
-
-      const name = `zoda-wrs-sales-${exportYear}-${String(exportMonth + 1).padStart(2, '0')}.xlsx`;
-
-      await downloadMonthSpreadsheet(payload, name);
-
+      if (displayGranularity === 'day') {
+        const payload = await fetchDayExportPayload(businessId, filterYear, filterMonth, filterDay);
+        await downloadDaySpreadsheet(payload, `zoda-wrs-sales-${selectedDate}.xlsx`);
+      } else if (displayGranularity === 'month') {
+        const payload = await fetchMonthExportPayload(businessId, filterYear, filterMonth);
+        const name = `zoda-wrs-sales-${filterYear}-${String(filterMonth + 1).padStart(2, '0')}.xlsx`;
+        await downloadMonthSpreadsheet(payload, name);
+      } else {
+        const payload = await fetchYearExportPayload(businessId, filterYear);
+        await downloadYearSpreadsheet(payload, `zoda-wrs-sales-${filterYear}.xlsx`);
+      }
     } catch (e) {
-
       setExportError(e instanceof Error ? e.message : 'Export failed. Check your internet connection and try again.');
-
     } finally {
-
-      setExporting(null);
-
+      setExporting(false);
     }
-
   }
-
-
-
-  async function handleExportYear() {
-
-    if (!businessId) return;
-
-    setExporting('year');
-
-    setExportError(null);
-
-    try {
-
-      const payload = await fetchYearExportPayload(businessId, exportYear);
-
-      await downloadYearSpreadsheet(payload, `zoda-wrs-sales-${exportYear}.xlsx`);
-
-    } catch (e) {
-
-      setExportError(e instanceof Error ? e.message : 'Export failed. Check your internet connection and try again.');
-
-    } finally {
-
-      setExporting(null);
-
-    }
-
-  }
-
-
-
-  const yearOptions = Array.from({ length: 8 }, (_, i) => now.getFullYear() - i);
-
-  const monthOptions = Array.from({ length: 12 }, (_, i) => ({
-
-    value: i,
-
-    label: new Date(2000, i, 1).toLocaleDateString('en-US', { month: 'long' }),
-
-  }));
 
 
 
@@ -276,168 +223,53 @@ export function SalesAnalyticsPage() {
       {exportError ? <p className="error-text module-alert">{exportError}</p> : null}
 
       <div className="sales-toolbar card card-flat">
-
-        <div className="sales-toolbar-controls">
-
-          <div className="sales-period-tabs">
-
-            {DISPLAY_GRANULARITY.map((p) => (
-
-              <button
-
-                key={p.id}
-
-                type="button"
-
-                className={`pos-category-tab${displayGranularity === p.id ? ' active' : ''}`}
-
-                onClick={() => {
-                  setDisplayGranularity(p.id);
-                  if (p.id === 'today') setSelectedDate(toDateInputValue(new Date()));
+        <div className="sales-toolbar-block">
+          <span className="sales-toolbar-heading">Display sales</span>
+          <div className="sales-toolbar-controls">
+            <div className="sales-period-tabs" role="tablist" aria-label="Sales display period">
+              {DISPLAY_GRANULARITY.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={displayGranularity === p.id}
+                  className={`pos-category-tab${displayGranularity === p.id ? ' active' : ''}`}
+                  onClick={() => setDisplayGranularity(p.id)}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+            <label className="sales-date-picker-btn sales-date-picker-btn--inline" title={pickerLabel}>
+              <span className="sales-date-picker-icon" aria-hidden>
+                📅
+              </span>
+              <strong className="sales-date-picker-value">{pickerLabel}</strong>
+              <input
+                type="date"
+                className="sales-date-input-overlay"
+                value={selectedDate}
+                onChange={(e) => {
+                  if (e.target.value) setSelectedDate(e.target.value);
                 }}
-
-              >
-
-                {p.label}
-
-              </button>
-
-            ))}
-
+                aria-label="Select date to display sales"
+              />
+            </label>
+            <button
+              type="button"
+              className="btn btn-primary btn-sm sales-export-action"
+              disabled={exporting}
+              onClick={() => void handleExport()}
+            >
+              {exporting ? 'Exporting…' : 'Export Excel'}
+            </button>
           </div>
-
-          <label className="sales-date-picker-btn sales-date-picker-btn--toolbar">
-
-            <span className="sales-date-picker-icon" aria-hidden>
-
-              📅
-
-            </span>
-
-            <span className="sales-date-picker-text">
-
-              <strong>{compactDateLabel}</strong>
-
-            </span>
-
-            <input
-
-              type="date"
-
-              className="sales-date-input-overlay"
-
-              value={selectedDate}
-
-              onChange={(e) => {
-
-                if (e.target.value) setSelectedDate(e.target.value);
-
-              }}
-
-              aria-label="Select day, month, and year"
-
-            />
-
-          </label>
-
+          <p className="sales-filter-summary">
+            Showing <strong>{filterLabel}</strong>
+            {' · '}
+            Export downloads the same sales shown above
+          </p>
         </div>
-
-        <div className="sales-toolbar-export">
-
-          <div className="sales-export-stack">
-
-            <div className="sales-export-line">
-
-              <select
-
-                className="sales-export-select"
-
-                value={exportMonth}
-
-                onChange={(e) => setExportMonth(Number(e.target.value))}
-
-                aria-label="Select month to export"
-
-              >
-
-                {monthOptions.map((m) => (
-
-                  <option key={m.value} value={m.value}>
-
-                    {m.label}
-
-                  </option>
-
-                ))}
-
-              </select>
-
-              <button
-
-                type="button"
-
-                className="btn btn-primary btn-sm sales-export-action"
-
-                disabled={exporting !== null}
-
-                onClick={() => void handleExportMonth()}
-
-              >
-
-                {exporting === 'month' ? 'Exporting…' : 'Export month'}
-
-              </button>
-
-            </div>
-
-            <div className="sales-export-line">
-
-              <select
-
-                className="sales-export-select"
-
-                value={exportYear}
-
-                onChange={(e) => setExportYear(Number(e.target.value))}
-
-                aria-label="Select year to export"
-
-              >
-
-                {yearOptions.map((y) => (
-
-                  <option key={y} value={y}>
-
-                    {y}
-
-                  </option>
-
-                ))}
-
-              </select>
-
-              <button
-
-                type="button"
-
-                className="btn btn-primary btn-sm sales-export-action"
-
-                disabled={exporting !== null}
-
-                onClick={() => void handleExportYear()}
-
-              >
-
-                {exporting === 'year' ? 'Exporting…' : 'Export year'}
-
-              </button>
-
-            </div>
-
-          </div>
-
-        </div>
-
       </div>
 
 
@@ -478,7 +310,7 @@ export function SalesAnalyticsPage() {
 
                 {filterLabel}
 
-                {displayGranularity === 'today'
+                {displayGranularity === 'day'
 
                   ? ' · Last 7 days'
 

@@ -182,7 +182,14 @@ function inferTargetApp(payload: WebhookPayload): "seller" | "customer" | null {
   if (explicit === "seller" || explicit === "customer") return explicit;
 
   const kind = String(payload?.kind ?? "");
-  if (kind === "new_order" || kind === "seller_registration_pending" || kind === "order_activity") return "seller";
+  if (
+    kind === "new_order" ||
+    kind === "seller_registration_pending" ||
+    kind === "order_activity" ||
+    kind === "pending_order_reminder"
+  ) {
+    return "seller";
+  }
   if (kind === "order_status" || kind === "seller_reminder" || kind === "loyalty_points") return "customer";
   return null;
 }

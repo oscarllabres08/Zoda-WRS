@@ -458,6 +458,10 @@ export default function ProfileIndexScreen() {
                 <Row title="Notifications" icon="notifications-outline" onPress={() => router.push('/(tabs)/profile/notifications')} />
                 <Divider />
                 <Row title="Help Center" icon="help-circle-outline" onPress={() => router.push('/(tabs)/profile/help')} />
+                <Divider />
+                <Row title="Terms & Conditions" icon="document-text-outline" onPress={() => router.push('/legal/terms')} />
+                <Divider />
+                <Row title="Privacy Policy" icon="shield-checkmark-outline" onPress={() => router.push('/legal/privacy')} />
               </View>
             </Card>
 

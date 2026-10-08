@@ -2,6 +2,13 @@ import { useState } from 'react';
 import { Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, View } from 'react-native';
 import { useRouter } from 'expo-router';
 
+import {
+  parseAuthCredentials,
+  sanitizeAuthEmail,
+  sanitizeAuthPasswordSignup,
+} from '../../lib/authInputSecurity';
+import { LEGAL_VERSION } from '../../lib/legalContent';
+import { getLegalOnboardingAcceptedAt, hasAcceptedLegalOnboarding } from '../../lib/legalOnboarding';
 import { supabase } from '../../lib/supabase';
 import { Screen } from '../../ui/components/Screen';
 import { Card } from '../../ui/components/Card';
@@ -31,19 +38,32 @@ export default function SignUpScreen() {
         setError('Please fill Name, Contact number, and Complete address.');
         return;
       }
-      if (!email.trim() || !password.trim()) {
-        setError('Please enter your email and password.');
+      const creds = parseAuthCredentials(email, password, { mode: 'signup' });
+      if (!creds.ok) {
+        setError(creds.error);
         return;
       }
-      if (password !== confirmPassword) {
+      const confirm = sanitizeAuthPasswordSignup(confirmPassword, false);
+      if (creds.password !== confirm) {
         setError('Passwords do not match.');
         return;
       }
+      if (!(await hasAcceptedLegalOnboarding())) {
+        router.replace('/(auth)/legal-welcome');
+        return;
+      }
 
+      const acceptedAt = (await getLegalOnboardingAcceptedAt()) ?? new Date().toISOString();
       const { data, error: err } = await supabase.auth.signUp({
-        email: email.trim(),
-        password,
-        options: { data: { display_name: displayName.trim() || email.trim() } },
+        email: creds.email,
+        password: creds.password,
+        options: {
+          data: {
+            display_name: displayName.trim() || creds.email,
+            terms_accepted_at: acceptedAt,
+            privacy_policy_version: LEGAL_VERSION,
+          },
+        },
       });
       if (err) throw err;
 
@@ -108,24 +128,34 @@ export default function SignUpScreen() {
                 inputMode="tel"
               />
               <TextField label="Complete address" value={address} onChangeText={setAddress} placeholder="House no., street, barangay, city" />
-              <TextField label="Email" value={email} onChangeText={setEmail} placeholder="you@example.com" autoCapitalize="none" />
+              <TextField
+                label="Email"
+                value={email}
+                onChangeText={(t) => setEmail(sanitizeAuthEmail(t))}
+                placeholder="you@example.com"
+                autoCapitalize="none"
+                keyboardType="email-address"
+                maxLength={254}
+              />
               <TextField
                 label="Password"
                 value={password}
-                onChangeText={setPassword}
+                onChangeText={(t) => setPassword(sanitizeAuthPasswordSignup(t, false))}
                 placeholder="Create a password"
                 autoCapitalize="none"
                 autoCorrect={false}
                 passwordToggleable
+                maxLength={128}
               />
               <TextField
                 label="Confirm password"
                 value={confirmPassword}
-                onChangeText={setConfirmPassword}
+                onChangeText={(t) => setConfirmPassword(sanitizeAuthPasswordSignup(t, false))}
                 placeholder="Confirm your password"
                 autoCapitalize="none"
                 autoCorrect={false}
                 passwordToggleable
+                maxLength={128}
               />
               {error ? (
                 <Text weight="bold" style={{ color: theme.colors.danger }}>

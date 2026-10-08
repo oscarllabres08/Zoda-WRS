@@ -2,6 +2,13 @@ import { useState } from 'react';
 import { Navigate } from 'react-router-dom';
 
 import { useAuth } from '../auth/AuthProvider';
+import { PasswordInput } from '../components/PasswordInput';
+import {
+  parseAuthCredentials,
+  sanitizeAuthEmail,
+  sanitizeAuthPassword,
+  sanitizeAuthPasswordSignup,
+} from '../lib/authInputSecurity';
 import { supabase } from '../lib/supabase';
 
 function WaterDropIcon({ className }: { className?: string }) {
@@ -55,11 +62,22 @@ export function AuthPage() {
     clearGateMessage();
     setBusy(true);
     try {
+      const creds = parseAuthCredentials(email, password, {
+        mode: mode === 'signin' ? 'login' : 'signup',
+        strictCommandFilter: mode === 'signup',
+      });
+      if (!creds.ok) {
+        setError(creds.error);
+        return;
+      }
       if (mode === 'signin') {
-        const { error: err } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+        const { error: err } = await supabase.auth.signInWithPassword({
+          email: creds.email,
+          password: creds.password,
+        });
         if (err) throw err;
       } else {
-        const { error: err } = await supabase.auth.signUp({ email: email.trim(), password });
+        const { error: err } = await supabase.auth.signUp({ email: creds.email, password: creds.password });
         if (err) throw err;
       }
     } catch (ex) {
@@ -132,21 +150,29 @@ export function AuthPage() {
                 autoComplete="email"
                 placeholder="you@example.com"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => setEmail(sanitizeAuthEmail(e.target.value))}
                 required
+                maxLength={254}
+                spellCheck={false}
               />
             </div>
             <div className="field">
               <label htmlFor="password">Password</label>
-              <input
+              <PasswordInput
                 id="password"
-                type="password"
                 autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
                 placeholder={mode === 'signin' ? 'Enter your password' : 'Create a password (min. 6 characters)'}
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) =>
+                  setPassword(
+                    mode === 'signup'
+                      ? sanitizeAuthPasswordSignup(e.target.value, true)
+                      : sanitizeAuthPassword(e.target.value)
+                  )
+                }
                 required
                 minLength={6}
+                maxLength={128}
               />
             </div>
             <button type="submit" className="btn btn-primary btn-water auth-submit-btn" disabled={busy}>

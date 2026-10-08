@@ -341,7 +341,7 @@ export function InventoryPage() {
           </div>
           <ImageUploadField
             label="Product Image"
-            hint="Click to upload — images are resized and compressed before saving to storage"
+            hint="Resized & compressed before saving"
             disabled={saving}
             onFileSelect={setNewImageFile}
           />
@@ -497,7 +497,7 @@ export function InventoryPage() {
               ) : null}
               <ImageUploadField
                 label="Product image"
-                hint="Upload a new image to replace the current photo"
+                hint="Replace current photo"
                 disabled={editSaving}
                 previewUrl={editImageFile ? undefined : publicWrsAssetUrl(supabase, editing.image_url) ?? undefined}
                 onFileSelect={setEditImageFile}
@@ -584,44 +584,50 @@ function InventoryRow({
         </label>
       </div>
       <div className="inventory-row-body">
-        <h4>{p.name}</h4>
-        <span className="inventory-row-badge">{categoryLabel}</span>
-        {loyaltyProgramActive && p.earn_loyalty_points ? (
-          <span className="inventory-row-badge loyalty">Loyalty points</span>
-        ) : null}
-        <p className="inventory-row-price">
-          {money(Number(p.price))} <span>/ pc</span>
-        </p>
-        {tracksStock(p.category) ? (
-          p.stock_quantity == null ? (
-            <p className="inventory-row-stock low">
-              <span className="stock-dot" /> Set stock quantity (edit)
-            </p>
+        <div className="inventory-row-top">
+          <h4>{p.name}</h4>
+          <div className="inventory-row-actions">
+            <button type="button" className="inventory-action-btn edit" aria-label="Edit" onClick={onEdit}>
+              <EditIcon />
+            </button>
+            <button type="button" className="inventory-action-btn delete" aria-label="Delete" onClick={onDelete}>
+              <TrashIcon />
+            </button>
+          </div>
+        </div>
+        <div className="inventory-row-badges">
+          <span className="inventory-row-badge">{categoryLabel}</span>
+          {loyaltyProgramActive && p.earn_loyalty_points ? (
+            <span className="inventory-row-badge loyalty">Loyalty points</span>
+          ) : null}
+        </div>
+        <div className="inventory-row-info">
+          <p className="inventory-row-price">
+            {money(Number(p.price))} <span>/ pc</span>
+          </p>
+          {tracksStock(p.category) ? (
+            p.stock_quantity == null ? (
+              <p className="inventory-row-stock low">
+                <span className="stock-dot" /> Set stock (edit)
+              </p>
+            ) : (
+              <p
+                className={`inventory-row-stock${p.stock_quantity <= 0 ? ' out' : isLowStock(p.stock_quantity) ? ' low' : ' in'}`}
+              >
+                <span className="stock-dot" /> {stockLabel(p.stock_quantity)}
+              </p>
+            )
           ) : (
-          <p
-            className={`inventory-row-stock${p.stock_quantity <= 0 ? ' out' : isLowStock(p.stock_quantity) ? ' low' : ' in'}`}
-          >
-            <span className="stock-dot" /> {stockLabel(p.stock_quantity)}
-          </p>
-          )
-        ) : (
-          <p className={`inventory-row-stock${p.is_available ? ' in' : ' out'}`}>
-            <span className="stock-dot" /> {p.is_available ? 'In Stock' : 'Hidden from app'}
-          </p>
-        )}
+            <p className={`inventory-row-stock${p.is_available ? ' in' : ' out'}`}>
+              <span className="stock-dot" /> {p.is_available ? 'In Stock' : 'Hidden'}
+            </p>
+          )}
+        </div>
         <label className="checkbox-row compact inventory-avail-toggle">
           <input type="checkbox" checked={p.is_available} onChange={(e) => onToggleAvail(e.target.checked)} />
           <span className="inventory-avail-label-long">Available in customer app</span>
           <span className="inventory-avail-label-short">In app</span>
         </label>
-      </div>
-      <div className="inventory-row-actions">
-        <button type="button" className="inventory-action-btn edit" aria-label="Edit" onClick={onEdit}>
-          <EditIcon />
-        </button>
-        <button type="button" className="inventory-action-btn delete" aria-label="Delete" onClick={onDelete}>
-          <TrashIcon />
-        </button>
       </div>
     </article>
   );

@@ -168,7 +168,9 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
                 data: toastData,
               });
               if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-              toastTimerRef.current = setTimeout(() => setToast(null), 3000);
+              const kind = String(toastData.kind ?? n.kind ?? '');
+              const toastMs = kind === 'pending_order_reminder' ? 6000 : 3000;
+              toastTimerRef.current = setTimeout(() => setToast(null), toastMs);
 
               try {
                 const soundOn = prefsRef.current.soundEnabled;

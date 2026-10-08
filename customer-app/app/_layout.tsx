@@ -2,7 +2,7 @@ import { DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
 import { Stack, useRouter, useSegments, type Href } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import 'react-native-reanimated';
 import { Platform, Pressable, View } from 'react-native';
 
@@ -15,6 +15,7 @@ import {
   Nunito_800ExtraBold,
 } from '@expo-google-fonts/nunito';
 
+import { hasAcceptedLegalOnboarding } from '../lib/legalOnboarding';
 import { AuthProvider, useAuth } from '../providers/AuthProvider';
 import { NotificationsProvider, useNotifications } from '../providers/NotificationsProvider';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -110,6 +111,8 @@ function AuthGate() {
   const segments = useSegments();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const [onboardingReady, setOnboardingReady] = useState(false);
+  const [onboardingAccepted, setOnboardingAccepted] = useState(false);
 
   const orderHrefFor = useCallback(
     (orderId: string) => {
@@ -130,11 +133,42 @@ function AuthGate() {
   }, [router, orderHrefFor]);
 
   useEffect(() => {
-    if (loading) return;
+    let alive = true;
+    void hasAcceptedLegalOnboarding().then((accepted) => {
+      if (!alive) return;
+      setOnboardingAccepted(accepted);
+      setOnboardingReady(true);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [segments]);
+
+  useEffect(() => {
+    if (loading || !onboardingReady) return;
+
     const inAuth = segments[0] === '(auth)';
-    if (!user && !inAuth) router.replace('/(auth)/sign-in');
+    const authScreen = segments[1];
+    const inLegal = segments[0] === 'legal';
+    const onLegalWelcome = inAuth && authScreen === 'legal-welcome';
+
+    if (!user) {
+      if (!onboardingAccepted && !onLegalWelcome && !inLegal) {
+        router.replace('/(auth)/legal-welcome');
+        return;
+      }
+      if (onboardingAccepted && onLegalWelcome) {
+        router.replace('/(auth)/sign-in');
+        return;
+      }
+      if (onboardingAccepted && !inAuth && !inLegal) {
+        router.replace('/(auth)/sign-in');
+        return;
+      }
+    }
+
     if (user && inAuth) router.replace('/(tabs)');
-  }, [user, loading, segments, router]);
+  }, [user, loading, onboardingReady, onboardingAccepted, segments, router]);
 
   return (
     <>
@@ -142,6 +176,7 @@ function AuthGate() {
         <Stack.Screen name="(auth)" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="order" options={{ headerShown: false }} />
+        <Stack.Screen name="legal" options={{ headerShown: false }} />
       </Stack>
 
       {toast ? (

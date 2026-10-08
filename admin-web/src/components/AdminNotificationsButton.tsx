@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 import { useAuth } from '../auth/AuthProvider';
+import { markOrderViewed } from '../lib/viewedOrders';
 import { supabase } from '../lib/supabase';
 import { useNotifications } from '../notifications/NotificationsProvider';
 
@@ -27,6 +28,7 @@ function timeLabel(iso: string) {
 function kindLabel(kind: string) {
   if (kind === 'new_order') return 'Order';
   if (kind === 'order_activity') return 'Update';
+  if (kind === 'pending_order_reminder') return 'Reminder';
   if (kind === 'seller_registration_pending') return 'Staff';
   return 'Alert';
 }
@@ -54,7 +56,7 @@ function CloseIcon() {
 }
 
 export function AdminNotificationsButton({ placement = 'desktop' }: { placement?: 'desktop' | 'header' }) {
-  const { user } = useAuth();
+  const { user, businessId } = useAuth();
   const { unreadCount, refresh, toast, dismissToast } = useNotifications();
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<NotifRow | null>(null);
@@ -128,6 +130,8 @@ export function AdminNotificationsButton({ placement = 'desktop' }: { placement?
   async function onItemClick(n: NotifRow) {
     const readAt = n.read_at ?? new Date().toISOString();
     if (!n.read_at) await markRead(n.id);
+    const orderId = n.order_id ?? (n.data?.orderId as string | undefined);
+    if (businessId && orderId) markOrderViewed(businessId, orderId);
     setSelected({ ...n, read_at: readAt });
   }
 

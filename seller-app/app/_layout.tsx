@@ -20,8 +20,10 @@ import {
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text } from '../ui/components/Text';
 import { theme } from '../ui/theme';
+import { usePendingOrderReminder } from '../hooks/usePendingOrderReminder';
 import { ensureAndroidNotificationChannels } from '../lib/notificationChannels';
 import { getNotificationRuntimePrefs } from '../lib/notificationRuntime';
+import { PendingOrderReminderBanner } from '../ui/components/PendingOrderReminderBanner';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -118,9 +120,12 @@ function RootLayoutNav() {
 function AuthGate() {
   const { user, loading, profileLoading, gateMessage } = useAuth();
   const { toast, dismissToast } = useNotifications();
+  const { staleOrders } = usePendingOrderReminder();
   const segments = useSegments();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const reminderBannerVisible = user != null && staleOrders.length > 0;
+  const toastTop = Math.max(insets.top, 10) + 6 + (reminderBannerVisible ? 78 : 0);
 
   useEffect(() => {
     const sub = Notifications.addNotificationResponseReceivedListener((response) => {
@@ -168,6 +173,10 @@ function AuthGate() {
         <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
       </Stack>
 
+      {reminderBannerVisible ? (
+        <PendingOrderReminderBanner orders={staleOrders} topInset={Math.max(insets.top, 8)} />
+      ) : null}
+
       {toast ? (
         <View
           pointerEvents="box-none"
@@ -175,8 +184,9 @@ function AuthGate() {
             position: 'absolute',
             left: 0,
             right: 0,
-            top: Math.max(insets.top, 10) + 6,
+            top: toastTop,
             alignItems: 'center',
+            zIndex: 60,
           }}
         >
           <Pressable

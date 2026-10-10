@@ -268,10 +268,16 @@ export function CustomersPage() {
       }
     }
 
-    const { data: balances } = await supabase
-      .from('seller_customer_container_balance')
-      .select('customer_id,outstanding_count,identifier_notes')
-      .eq('seller_id', businessId);
+    const [{ data: balances }, { data: posBalances }] = await Promise.all([
+      supabase
+        .from('seller_customer_container_balance')
+        .select('customer_id,outstanding_count,identifier_notes')
+        .eq('seller_id', businessId),
+      supabase
+        .from('seller_pos_container_balance')
+        .select('customer_name_key,outstanding_count,identifier_notes,display_name')
+        .eq('seller_id', businessId),
+    ]);
 
     const balByCustomer = new Map<
       string,
@@ -284,6 +290,22 @@ export function CustomersPage() {
         identifier_notes: string | null;
       };
       balByCustomer.set(row.customer_id, {
+        outstanding_count: Math.max(0, row.outstanding_count ?? 0),
+        identifier_notes: row.identifier_notes,
+      });
+    }
+
+    const balByPosKey = new Map<
+      string,
+      { outstanding_count: number; identifier_notes: string | null }
+    >();
+    for (const b of posBalances ?? []) {
+      const row = b as {
+        customer_name_key: string;
+        outstanding_count: number;
+        identifier_notes: string | null;
+      };
+      balByPosKey.set(row.customer_name_key, {
         outstanding_count: Math.max(0, row.outstanding_count ?? 0),
         identifier_notes: row.identifier_notes,
       });
@@ -330,6 +352,8 @@ export function CustomersPage() {
 
     for (const [key, pos] of posAgg) {
       if (mergedPosKeys.has(key)) continue;
+      const posBal = balByPosKey.get(key);
+      const posOutstanding = posBal?.outstanding_count ?? 0;
       list.push({
         id: posCustomerRowId(key),
         name: pos.displayName,
@@ -342,8 +366,33 @@ export function CustomersPage() {
         unpaidDeliveredCount: pos.unpaidCount,
         unpaidDeliveredTotal: pos.unpaidTotal,
         totalSpent: pos.totalSpent,
-        containersOutstanding: 0,
-        containerIdentifierNotes: null,
+        containersOutstanding: posOutstanding,
+        containerIdentifierNotes: posOutstanding > 0 ? posBal?.identifier_notes?.trim() || null : null,
+        isPosOnly: true,
+        posNameKey: key,
+      });
+    }
+
+    for (const [key, bal] of balByPosKey) {
+      if (mergedPosKeys.has(key) || posAgg.has(key)) continue;
+      if ((bal.outstanding_count ?? 0) < 1) continue;
+      list.push({
+        id: posCustomerRowId(key),
+        name: key
+          .split(/\s+/)
+          .map((w) => (w ? w.charAt(0).toUpperCase() + w.slice(1) : w))
+          .join(' '),
+        avatarPath: null,
+        phone: 'Walk-in POS',
+        address: '—',
+        orderCount: 0,
+        lastOrder: null,
+        hasUnpaidUtang: false,
+        unpaidDeliveredCount: 0,
+        unpaidDeliveredTotal: 0,
+        totalSpent: 0,
+        containersOutstanding: bal.outstanding_count,
+        containerIdentifierNotes: bal.identifier_notes?.trim() || null,
         isPosOnly: true,
         posNameKey: key,
       });
@@ -364,6 +413,11 @@ export function CustomersPage() {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'seller_customer_container_balance', filter: `seller_id=eq.${businessId}` },
+        () => void load()
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'seller_pos_container_balance', filter: `seller_id=eq.${businessId}` },
         () => void load()
       )
       .subscribe();
@@ -511,7 +565,9 @@ export function CustomersPage() {
   }
 
   const filtered = useMemo(() => {
-    let list = rows.filter((r) => r.orderCount > 0 || payFilter === 'all' || containerFilter === 'borrowed');
+    let list = rows.filter(
+      (r) => r.orderCount > 0 || r.containersOutstanding > 0 || payFilter === 'all' || containerFilter === 'borrowed'
+    );
     if (payFilter === 'paid')
       list = list.filter((r) => r.orderCount > 0 && r.unpaidDeliveredCount === 0 && !r.hasUnpaidUtang);
     if (payFilter === 'unpaid') list = list.filter((r) => r.unpaidDeliveredCount > 0 || r.hasUnpaidUtang);
@@ -622,20 +678,16 @@ export function CustomersPage() {
                     )}
                   </td>
                   <td>
-                    {!r.isPosOnly ? (
-                      <ContainerReturnPanel
-                        customerId={r.id}
-                        customerName={r.name}
-                        outstanding={r.containersOutstanding}
-                        identifierNotes={r.containerIdentifierNotes}
-                        busy={returnBusyId === r.id}
-                        onBusyChange={(b) => setReturnBusyId(b ? r.id : null)}
-                        onSuccess={() => void load()}
-                        onError={(msg) => setError(msg || null)}
-                      />
-                    ) : (
-                      '—'
-                    )}
+                    <ContainerReturnPanel
+                      customerId={r.id}
+                      customerName={r.name}
+                      outstanding={r.containersOutstanding}
+                      identifierNotes={r.containerIdentifierNotes}
+                      busy={returnBusyId === r.id}
+                      onBusyChange={(b) => setReturnBusyId(b ? r.id : null)}
+                      onSuccess={() => void load()}
+                      onError={(msg) => setError(msg || null)}
+                    />
                   </td>
                   <td>
                     <button type="button" className="btn btn-ghost btn-sm" onClick={() => void openHistory(r)}>

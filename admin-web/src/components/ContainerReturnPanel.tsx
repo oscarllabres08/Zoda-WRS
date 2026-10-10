@@ -21,6 +21,7 @@ type Props = {
 
 export function ContainerReturnPanel({
   customerId,
+  customerName,
   outstanding,
   identifierNotes,
   busy,
@@ -63,6 +64,7 @@ export function ContainerReturnPanel({
     try {
       const result = await recordContainerReturn(supabase, {
         customerId,
+        customerName,
         quantity,
         containerNumbers,
       });

@@ -5,9 +5,13 @@ export type PosCustomerOption = {
   name: string;
   avatarPath: string | null;
   isPosOnly: boolean;
+  profileUserId?: string | null;
 };
 
-function mergeCustomerOptions(profileRows: { name: string; avatarPath: string | null }[], posNames: string[]): PosCustomerOption[] {
+function mergeCustomerOptions(
+  profileRows: { name: string; avatarPath: string | null; userId: string }[],
+  posNames: string[]
+): PosCustomerOption[] {
   const map = new Map<string, PosCustomerOption>();
   for (const row of profileRows) {
     const trimmed = row.name.trim();
@@ -16,6 +20,7 @@ function mergeCustomerOptions(profileRows: { name: string; avatarPath: string | 
       name: trimmed,
       avatarPath: row.avatarPath,
       isPosOnly: false,
+      profileUserId: row.userId,
     });
   }
   for (const raw of posNames) {
@@ -23,7 +28,7 @@ function mergeCustomerOptions(profileRows: { name: string; avatarPath: string | 
     if (!trimmed) continue;
     const key = normalizeCustomerName(trimmed);
     if (!map.has(key)) {
-      map.set(key, { name: trimmed, avatarPath: null, isPosOnly: true });
+      map.set(key, { name: trimmed, avatarPath: null, isPosOnly: true, profileUserId: null });
     }
   }
   return [...map.values()].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
@@ -40,7 +45,7 @@ export async function loadPosCustomerNames(businessId: string): Promise<PosCusto
       .limit(2000),
     supabase
       .from('profiles')
-      .select('display_name,avatar_path')
+      .select('user_id,display_name,avatar_path')
       .eq('role', 'customer')
       .not('display_name', 'is', null)
       .limit(400),
@@ -48,6 +53,7 @@ export async function loadPosCustomerNames(businessId: string): Promise<PosCusto
 
   const posNames = (posRows ?? []).map((r) => String(r.customer_name ?? ''));
   const profileRows = (profiles ?? []).map((p) => ({
+    userId: String(p.user_id),
     name: String(p.display_name ?? ''),
     avatarPath: (p.avatar_path as string | null) ?? null,
   }));

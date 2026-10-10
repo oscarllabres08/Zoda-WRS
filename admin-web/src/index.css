@@ -1685,6 +1685,11 @@ table.data-table th {
     font-size: 12px;
   }
 
+  .pos-borrow-block {
+    margin: 8px 0 2px;
+    padding: 8px 10px;
+  }
+
   .pos-cart-actions {
     padding-top: 8px;
     margin-top: 0;
@@ -2847,6 +2852,41 @@ table.data-table th {
 .pos-gcash-hint {
   margin: 0 0 10px;
   font-size: 12px;
+}
+
+.pos-borrow-block {
+  margin: 12px 0 4px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px dashed var(--border);
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.pos-borrow-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+}
+
+.pos-borrow-toggle input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--primary);
+}
+
+.pos-borrow-fields {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pos-borrow-qty input {
+  max-width: 88px;
 }
 
 .customer-list-name-cell {

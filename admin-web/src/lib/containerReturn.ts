@@ -1,5 +1,18 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
+import { isPosCustomerRowId, posNameFromRowId } from './posPayment';
+
+function customerNameForPosReturn(customerId: string, fallbackName: string): string {
+  if (!isPosCustomerRowId(customerId)) return fallbackName;
+  if (fallbackName.trim()) return fallbackName.trim();
+  const key = posNameFromRowId(customerId);
+  if (!key) return fallbackName;
+  return key
+    .split(/\s+/)
+    .map((w) => (w ? w.charAt(0).toUpperCase() + w.slice(1) : w))
+    .join(' ');
+}
+
 export type ContainerReturnResult =
   | { ok: true; outstandingRemaining?: number }
   | { ok: false; message: string };
@@ -77,17 +90,35 @@ export async function recordContainerReturn(
   supabase: SupabaseClient,
   params: {
     customerId: string;
+    customerName?: string;
     quantity: number;
     containerNumbers?: string | null;
   }
 ): Promise<ContainerReturnResult> {
+  const nums = params.containerNumbers?.trim() ? params.containerNumbers.trim() : null;
+
+  if (isPosCustomerRowId(params.customerId)) {
+    const name = customerNameForPosReturn(params.customerId, params.customerName ?? '');
+    const { data: raw, error } = await supabase.rpc('seller_record_pos_container_return', {
+      p_customer_name: name,
+      p_quantity: params.quantity,
+      p_container_numbers: nums,
+    });
+    if (error) {
+      return { ok: false, message: error.message + rpcHint(error.message) };
+    }
+    const res = parseRpcPayload(raw);
+    if (res?.ok === false) {
+      return { ok: false, message: res.message ?? 'Could not record return.' };
+    }
+    return { ok: true, outstandingRemaining: res?.outstanding_remaining };
+  }
+
   const baseArgs = {
     p_customer_id: params.customerId,
     p_quantity: params.quantity,
     p_order_id: null as null,
   };
-
-  const nums = params.containerNumbers?.trim() ? params.containerNumbers.trim() : null;
 
   async function call(withNumbers: boolean) {
     const rpcArgs = {

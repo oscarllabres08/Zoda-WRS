@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../auth/AuthProvider';
 import { CustomerNameAutocomplete } from '../components/CustomerNameAutocomplete';
 import { money, publicWrsAssetUrl } from '../lib/format';
+import { recordContainerLend, resolveProfileUserIdForPosName, validateBorrowContainers } from '../lib/containerLend';
 import { loadPosCustomerNames, type PosCustomerOption } from '../lib/posCustomerNames';
 import { isLowStock, stockLabel, tracksStock } from '../lib/inventoryStock';
 import { type PosPaymentMethod } from '../lib/posPayment';
@@ -58,6 +59,9 @@ export function PosPage() {
   const [customerNameOptions, setCustomerNameOptions] = useState<PosCustomerOption[]>([]);
   const [paymentMethod, setPaymentMethod] = useState<PosPaymentMethod>('cash');
   const [cashReceived, setCashReceived] = useState('');
+  const [borrowContainers, setBorrowContainers] = useState(false);
+  const [borrowQty, setBorrowQty] = useState('1');
+  const [borrowCodes, setBorrowCodes] = useState('');
 
   const loadProducts = useCallback(async () => {
     if (!businessId) return;
@@ -171,6 +175,9 @@ export function PosPage() {
     setCashReceived('');
     setCustomerName('');
     setPaymentMethod('cash');
+    setBorrowContainers(false);
+    setBorrowQty('1');
+    setBorrowCodes('');
     setSuccess(null);
   }
 
@@ -180,6 +187,25 @@ export function PosPage() {
     if (!paymentSettled && !customerName.trim()) {
       setError('Customer name is required for unpaid orders.');
       return;
+    }
+
+    let borrowPlan: { quantity: number; containerNumbers: string | null } | null = null;
+    if (borrowContainers) {
+      if (!customerName.trim()) {
+        setError('Customer name is required when recording borrowed containers.');
+        return;
+      }
+      const qty = Number.parseInt(borrowQty, 10);
+      if (!Number.isFinite(qty) || qty < 1) {
+        setError('Enter borrow quantity (at least 1).');
+        return;
+      }
+      const validated = validateBorrowContainers(qty, borrowCodes);
+      if (!validated.ok) {
+        setError(validated.message);
+        return;
+      }
+      borrowPlan = { quantity: qty, containerNumbers: validated.containerNumbers };
     }
 
     if (paymentSettled && paymentMethod === 'cash') {
@@ -239,15 +265,32 @@ export function PosPage() {
           if (stockErr) throw stockErr;
         }
       }
+
+      if (borrowPlan) {
+        const profileUserId = resolveProfileUserIdForPosName(trimmedName, customerNameOptions);
+        const lendRes = await recordContainerLend(supabase, {
+          customerName: trimmedName,
+          profileUserId,
+          quantity: borrowPlan.quantity,
+          containerNumbers: borrowPlan.containerNumbers,
+          posSaleId: saleId,
+        });
+        if (!lendRes.ok) throw new Error(lendRes.message);
+      }
+
       await loadProducts();
       await loadCustomerNames();
       clearCart();
       const who = trimmedName ? `${trimmedName} · ` : '';
       const payLabel = paymentMethod === 'gcash' ? 'GCash' : 'Cash';
+      const borrowNote =
+        borrowPlan != null
+          ? ` ${borrowPlan.quantity} container(s) recorded as borrowed${borrowPlan.containerNumbers ? ` (${borrowPlan.containerNumbers}).` : '.'}`
+          : '';
       setSuccess(
         paymentSettled
-          ? `${who}Paid ${payLabel} sale recorded.${changeDue != null && changeDue > 0 ? ` Change: ${money(changeDue)}.` : ''}`
-          : `${who}Unpaid ${payLabel} sale recorded.${trimmedName ? ' Customer added to list.' : ''}`
+          ? `${who}Paid ${payLabel} sale recorded.${changeDue != null && changeDue > 0 ? ` Change: ${money(changeDue)}.` : ''}${borrowNote}`
+          : `${who}Unpaid ${payLabel} sale recorded.${trimmedName ? ' Customer added to list.' : ''}${borrowNote}`
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to save sale');
@@ -405,6 +448,43 @@ export function PosPage() {
                 </p>
               }
             />
+
+            <div className="pos-borrow-block">
+              <label className="pos-borrow-toggle">
+                <input
+                  type="checkbox"
+                  checked={borrowContainers}
+                  onChange={(e) => setBorrowContainers(e.target.checked)}
+                />
+                <span>Add borrowed container (optional)</span>
+              </label>
+              {borrowContainers ? (
+                <div className="pos-borrow-fields">
+                  <label className="field pos-borrow-qty">
+                    <span className="pos-cash-label">Quantity</span>
+                    <input
+                      type="number"
+                      min={1}
+                      step={1}
+                      value={borrowQty}
+                      onChange={(e) => setBorrowQty(e.target.value)}
+                    />
+                  </label>
+                  <label className="field pos-borrow-codes">
+                    <span className="pos-cash-label">Container codes</span>
+                    <input
+                      type="text"
+                      placeholder="e.g. Con001, Con002"
+                      value={borrowCodes}
+                      onChange={(e) => setBorrowCodes(e.target.value)}
+                    />
+                  </label>
+                  <p className="field-hint pos-customer-hint">
+                    Requires customer name. Codes are optional but must match quantity when provided.
+                  </p>
+                </div>
+              ) : null}
+            </div>
 
           <div className="pos-checkout-section">
             <h3 className="pos-checkout-heading">Product summary</h3>

@@ -1,6 +1,5 @@
--- Run this in Supabase SQL Editor if container return buttons fail or IDs do not update after return.
--- If you see "Could not choose the best candidate function", use fix-container-return-overload.sql instead.
--- (Also included in supabase/schema.sql)
+-- Fix "Could not choose the best candidate function" for container returns.
+-- Run in Supabase SQL Editor (safe to re-run).
 
 drop function if exists public.seller_record_container_return(uuid, integer, uuid);
 drop function if exists public.seller_record_container_return(uuid, integer, uuid, text);
@@ -197,7 +196,10 @@ begin
 end;
 $$;
 
+revoke all on function public.seller_container_notes_remove_ids(text, text) from public;
 grant execute on function public.seller_container_notes_remove_ids(text, text) to authenticated;
 grant execute on function public.seller_container_notes_remove_ids(text, text) to service_role;
+
+revoke all on function public.seller_record_container_return(uuid, integer, uuid, text) from public;
 grant execute on function public.seller_record_container_return(uuid, integer, uuid, text) to authenticated;
 grant execute on function public.seller_record_container_return(uuid, integer, uuid, text) to service_role;

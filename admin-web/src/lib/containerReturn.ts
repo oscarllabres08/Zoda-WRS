@@ -34,6 +34,9 @@ export function joinContainerIds(ids: string[]): string {
 
 function rpcHint(message: string): string {
   const m = message.toLowerCase();
+  if (m.includes('could not choose the best candidate function')) {
+    return ' Run supabase/patches/fix-container-return-overload.sql in the Supabase SQL Editor.';
+  }
   if (
     m.includes('could not find') ||
     m.includes('schema cache') ||
@@ -41,7 +44,7 @@ function rpcHint(message: string): string {
     m.includes('404') ||
     m.includes('pgrst202')
   ) {
-    return ' Run supabase/patches/container-return.sql in the Supabase SQL Editor.';
+    return ' Run supabase/patches/fix-container-return-overload.sql in the Supabase SQL Editor.';
   }
   return '';
 }
@@ -87,14 +90,17 @@ export async function recordContainerReturn(
   const nums = params.containerNumbers?.trim() ? params.containerNumbers.trim() : null;
 
   async function call(withNumbers: boolean) {
-    const rpcArgs = withNumbers && nums ? { ...baseArgs, p_container_numbers: nums } : baseArgs;
+    const rpcArgs = {
+      ...baseArgs,
+      p_container_numbers: withNumbers && nums ? nums : null,
+    };
     return supabase.rpc('seller_record_container_return', rpcArgs);
   }
 
-  let { data: raw, error } = await call(false);
+  let { data: raw, error } = await call(!!nums);
 
-  if (error && nums && isRpcNotFound(error.message)) {
-    const retry = await call(true);
+  if (error && isRpcNotFound(error.message)) {
+    const retry = await call(false);
     raw = retry.data;
     error = retry.error;
   }

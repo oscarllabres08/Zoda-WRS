@@ -36,6 +36,9 @@ export function joinContainerIds(ids: string[]): string {
 
 function rpcHint(message: string): string {
   const m = message.toLowerCase();
+  if (m.includes('could not choose the best candidate function')) {
+    return '\n\nRun supabase/patches/fix-container-return-overload.sql in the Supabase SQL Editor.';
+  }
   if (
     m.includes('could not find') ||
     m.includes('schema cache') ||
@@ -43,7 +46,7 @@ function rpcHint(message: string): string {
     m.includes('404') ||
     m.includes('pgrst202')
   ) {
-    return '\n\nRun supabase/patches/container-return.sql in the Supabase SQL Editor.';
+    return '\n\nRun supabase/patches/fix-container-return-overload.sql in the Supabase SQL Editor.';
   }
   return '';
 }
@@ -89,15 +92,17 @@ export async function recordContainerReturn(
   const nums = params.containerNumbers?.trim() ? params.containerNumbers.trim() : null;
 
   async function call(withNumbers: boolean) {
-    const rpcArgs = withNumbers && nums ? { ...baseArgs, p_container_numbers: nums } : baseArgs;
+    const rpcArgs = {
+      ...baseArgs,
+      p_container_numbers: withNumbers && nums ? nums : null,
+    };
     return supabase.rpc('seller_record_container_return', rpcArgs);
   }
 
-  // Prefer 3-arg call first — extra p_container_numbers causes PostgREST 404 if DB not migrated yet.
-  let { data: raw, error } = await call(false);
+  let { data: raw, error } = await call(!!nums);
 
-  if (error && nums && isRpcNotFound(error.message)) {
-    const retry = await call(true);
+  if (error && isRpcNotFound(error.message)) {
+    const retry = await call(false);
     raw = retry.data;
     error = retry.error;
   }

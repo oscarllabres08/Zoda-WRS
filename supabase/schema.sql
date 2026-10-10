@@ -2380,10 +2380,59 @@
   grant execute on function public.seller_record_container_lend(uuid, integer, text) to authenticated;
   grant execute on function public.seller_record_container_lend(uuid, integer, text) to service_role;
 
+  create or replace function public.seller_container_notes_remove_ids(
+    p_notes text,
+    p_remove_csv text
+  )
+  returns text
+  language plpgsql
+  immutable
+  as $$
+  declare
+    tok text;
+    keep_ids text[] := array[]::text[];
+    remove_set text[];
+    r text;
+  begin
+    if p_notes is null or trim(p_notes) = '' then
+      return null;
+    end if;
+    if p_remove_csv is null or trim(p_remove_csv) = '' then
+      return nullif(trim(p_notes), '');
+    end if;
+
+    select coalesce(array_agg(distinct lower(trim(x))), array[]::text[])
+    into remove_set
+    from unnest(regexp_split_to_array(p_remove_csv, '\s*[,;]\s*')) as x
+    where trim(x) <> '';
+
+    foreach tok in array regexp_split_to_array(p_notes, '\s*[,;]\s*') loop
+      tok := trim(tok);
+      if tok = '' then
+        continue;
+      end if;
+      if not (lower(tok) = any(remove_set)) then
+        keep_ids := array_append(keep_ids, tok);
+      end if;
+    end loop;
+
+    if keep_ids is null or coalesce(array_length(keep_ids, 1), 0) = 0 then
+      return null;
+    end if;
+
+    select string_agg(r, ', ' order by r)
+    into r
+    from unnest(keep_ids) as r;
+
+    return nullif(trim(r), '');
+  end;
+  $$;
+
   create or replace function public.seller_record_container_return(
     p_customer_id uuid,
     p_quantity integer,
-    p_order_id uuid default null
+    p_order_id uuid default null,
+    p_container_numbers text default null
   )
   returns jsonb
   language plpgsql
@@ -2394,8 +2443,12 @@
   declare
     v_business uuid := public.seller_business_id(auth.uid());
     v_current integer;
+    v_notes text;
     v_order_customer uuid;
     v_order_seller uuid;
+    v_nums text := nullif(trim(coalesce(p_container_numbers, '')), '');
+    v_id_count integer;
+    v_tok text;
   begin
     if not public.is_seller(auth.uid()) then
       raise exception 'Only sellers can record container returns';
@@ -2431,9 +2484,58 @@
       end if;
     end if;
 
-    select b.outstanding_count into v_current
+    select b.outstanding_count, b.identifier_notes
+    into v_current, v_notes
     from public.seller_customer_container_balance b
     where b.seller_id = v_business and b.customer_id = p_customer_id;
+
+    if coalesce(v_current, 0) < 1 then
+      return jsonb_build_object(
+        'ok', false,
+        'error', 'none_outstanding',
+        'message', 'This customer has no borrowed containers recorded.'
+      );
+    end if;
+
+    if v_nums is not null then
+      select count(*)::integer
+      into v_id_count
+      from unnest(regexp_split_to_array(v_nums, '\s*[,;]\s*')) as x
+      where trim(x) <> '';
+
+      if coalesce(v_id_count, 0) < 1 then
+        return jsonb_build_object('ok', false, 'error', 'bad_numbers', 'message', 'Invalid container numbers.');
+      end if;
+
+      if v_id_count <> p_quantity then
+        return jsonb_build_object(
+          'ok', false,
+          'error', 'count_mismatch',
+          'message', 'Number of container IDs must match the return quantity.'
+        );
+      end if;
+
+      if coalesce(trim(v_notes), '') <> '' then
+        foreach v_tok in array regexp_split_to_array(v_nums, '\s*[,;]\s*') loop
+          v_tok := trim(v_tok);
+          if v_tok = '' then
+            continue;
+          end if;
+          if not exists (
+            select 1
+            from unnest(regexp_split_to_array(v_notes, '\s*[,;]\s*')) as n(id)
+            where trim(n.id) <> '' and lower(trim(n.id)) = lower(v_tok)
+          ) then
+            return jsonb_build_object(
+              'ok', false,
+              'error', 'unknown_id',
+              'message',
+              format('Container ID not found on this customer: %s', v_tok)
+            );
+          end if;
+        end loop;
+      end if;
+    end if;
 
     if coalesce(v_current, 0) < p_quantity then
       return jsonb_build_object(
@@ -2445,13 +2547,19 @@
     end if;
 
     insert into public.seller_container_movements (
-      seller_id, customer_id, order_id, movement_type, quantity
+      seller_id, customer_id, order_id, movement_type, quantity, container_numbers
     ) values (
-      v_business, p_customer_id, p_order_id, 'return', p_quantity
+      v_business, p_customer_id, p_order_id, 'return', p_quantity, v_nums
     );
 
     update public.seller_customer_container_balance b
-      set outstanding_count = b.outstanding_count - p_quantity
+      set
+        outstanding_count = b.outstanding_count - p_quantity,
+        identifier_notes = case
+          when b.outstanding_count - p_quantity <= 0 then null
+          when v_nums is not null then public.seller_container_notes_remove_ids(b.identifier_notes, v_nums)
+          else b.identifier_notes
+        end
     where b.seller_id = v_business and b.customer_id = p_customer_id;
 
     return jsonb_build_object(
@@ -2464,9 +2572,13 @@
   end;
   $$;
 
-  revoke all on function public.seller_record_container_return(uuid, integer, uuid) from public;
-  grant execute on function public.seller_record_container_return(uuid, integer, uuid) to authenticated;
-  grant execute on function public.seller_record_container_return(uuid, integer, uuid) to service_role;
+  revoke all on function public.seller_container_notes_remove_ids(text, text) from public;
+  grant execute on function public.seller_container_notes_remove_ids(text, text) to authenticated;
+  grant execute on function public.seller_container_notes_remove_ids(text, text) to service_role;
+
+  revoke all on function public.seller_record_container_return(uuid, integer, uuid, text) from public;
+  grant execute on function public.seller_record_container_return(uuid, integer, uuid, text) to authenticated;
+  grant execute on function public.seller_record_container_return(uuid, integer, uuid, text) to service_role;
 
   -- ── Password reset codes (for PHPMailer reset flow) ---
   create table if not exists public.password_reset_codes (

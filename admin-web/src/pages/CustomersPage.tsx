@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
+import { ConfirmModal } from '../components/ConfirmModal';
 import { ContainerReturnPanel } from '../components/ContainerReturnPanel';
 import { PageHeader } from '../components/PageHeader';
 import { useAuth } from '../auth/AuthProvider';
@@ -141,6 +142,8 @@ export function CustomersPage() {
   const [returnBusyId, setReturnBusyId] = useState<string | null>(null);
   const [selectedEntry, setSelectedEntry] = useState<HistoryEntry | null>(null);
   const [paymentBusyKey, setPaymentBusyKey] = useState<string | null>(null);
+  const [removeTarget, setRemoveTarget] = useState<CustomerRow | null>(null);
+  const [removeBusy, setRemoveBusy] = useState(false);
 
   useEffect(() => {
     if (!businessId || !selectedEntry || selectedEntry.source !== 'order') return;
@@ -268,7 +271,7 @@ export function CustomersPage() {
       }
     }
 
-    const [{ data: balances }, { data: posBalances }] = await Promise.all([
+    const [balRes, posBalRes, hiddenCustRes, hiddenPosRes] = await Promise.all([
       supabase
         .from('seller_customer_container_balance')
         .select('customer_id,outstanding_count,identifier_notes')
@@ -277,7 +280,23 @@ export function CustomersPage() {
         .from('seller_pos_container_balance')
         .select('customer_name_key,outstanding_count,identifier_notes,display_name')
         .eq('seller_id', businessId),
+      supabase.from('seller_hidden_customers').select('customer_id').eq('seller_id', businessId),
+      supabase.from('seller_hidden_pos_customers').select('customer_name_key').eq('seller_id', businessId),
     ]);
+
+    const balances = balRes.data;
+    const posBalances = posBalRes.data;
+    const hiddenCustomers = hiddenCustRes.data;
+
+    const hiddenCustomerIds = new Set(
+      ((hiddenCustomers ?? []) as { customer_id: string }[]).map((r) => r.customer_id)
+    );
+    const hiddenPosKeys = new Set<string>();
+    if (!hiddenPosRes.error) {
+      for (const row of (hiddenPosRes.data ?? []) as { customer_name_key: string }[]) {
+        hiddenPosKeys.add(row.customer_name_key);
+      }
+    }
 
     const balByCustomer = new Map<
       string,
@@ -398,8 +417,15 @@ export function CustomersPage() {
       });
     }
 
-    list.sort((a, b) => b.orderCount - a.orderCount);
-    setRows(list);
+    const visible = list.filter((r) => {
+      if (r.isPosOnly) {
+        return r.posNameKey ? !hiddenPosKeys.has(r.posNameKey) : true;
+      }
+      return !hiddenCustomerIds.has(r.id);
+    });
+
+    visible.sort((a, b) => b.orderCount - a.orderCount);
+    setRows(visible);
     setLoading(false);
   }, [businessId]);
 
@@ -418,6 +444,16 @@ export function CustomersPage() {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'seller_pos_container_balance', filter: `seller_id=eq.${businessId}` },
+        () => void load()
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'seller_hidden_customers', filter: `seller_id=eq.${businessId}` },
+        () => void load()
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'seller_hidden_pos_customers', filter: `seller_id=eq.${businessId}` },
         () => void load()
       )
       .subscribe();
@@ -502,6 +538,38 @@ export function CustomersPage() {
       setHistoryHasMore(historyAll.length > nextCount);
     } finally {
       setHistoryLoadingMore(false);
+    }
+  }
+
+  async function confirmRemoveCustomer() {
+    if (!businessId || !removeTarget) return;
+    setRemoveBusy(true);
+    setError(null);
+    try {
+      if (removeTarget.isPosOnly) {
+        const key = removeTarget.posNameKey ?? posNameFromRowId(removeTarget.id);
+        if (!key) throw new Error('Could not identify this walk-in customer.');
+        const { error: err } = await supabase.from('seller_hidden_pos_customers').insert({
+          seller_id: businessId,
+          customer_name_key: key,
+        });
+        if (err) throw err;
+      } else {
+        const { error: err } = await supabase.from('seller_hidden_customers').insert({
+          seller_id: businessId,
+          customer_id: removeTarget.id,
+        });
+        if (err) throw err;
+      }
+      if (historyFor?.id === removeTarget.id) {
+        closeHistory();
+      }
+      setRemoveTarget(null);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not remove customer');
+    } finally {
+      setRemoveBusy(false);
     }
   }
 
@@ -690,9 +758,14 @@ export function CustomersPage() {
                     />
                   </td>
                   <td>
-                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => void openHistory(r)}>
-                      Order history
-                    </button>
+                    <div className="row-actions">
+                      <button type="button" className="btn btn-ghost btn-sm" onClick={() => void openHistory(r)}>
+                        Order history
+                      </button>
+                      <button type="button" className="btn btn-danger btn-sm" onClick={() => setRemoveTarget(r)}>
+                        Remove
+                      </button>
+                    </div>
                   </td>
                 </tr>
                 );
@@ -813,6 +886,41 @@ export function CustomersPage() {
           </div>
         </div>
       ) : null}
+
+      <ConfirmModal
+        open={removeTarget != null}
+        title="Remove customer from list?"
+        message={
+          removeTarget ? (
+            <>
+              Remove <strong>{removeTarget.name}</strong> from your customer list?
+              {removeTarget.containersOutstanding > 0 ? (
+                <>
+                  {' '}
+                  They still have <strong>{removeTarget.containersOutstanding}</strong> borrowed container
+                  {removeTarget.containersOutstanding === 1 ? '' : 's'} on record.
+                </>
+              ) : null}
+              {removeTarget.unpaidDeliveredCount > 0 ? (
+                <>
+                  {' '}
+                  They still have <strong>{removeTarget.unpaidDeliveredCount}</strong> unpaid sale
+                  {removeTarget.unpaidDeliveredCount === 1 ? '' : 's'}.
+                </>
+              ) : null}{' '}
+              Past orders and POS sales stay in your store records; this only hides them from the list (same as Seller
+              app).
+            </>
+          ) : null
+        }
+        confirmLabel="Yes, remove"
+        variant="danger"
+        busy={removeBusy}
+        onCancel={() => {
+          if (!removeBusy) setRemoveTarget(null);
+        }}
+        onConfirm={() => void confirmRemoveCustomer()}
+      />
     </>
   );
 }

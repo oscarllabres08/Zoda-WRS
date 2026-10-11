@@ -42,16 +42,35 @@ export function ConfirmModal({
         aria-labelledby="confirm-modal-title"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 id="confirm-modal-title" className="card-title">
-          {title}
-        </h2>
-        <div className="confirm-modal-message muted-block">{message}</div>
+        <div className="confirm-modal-body">
+          <div className={`confirm-modal-head${variant === 'danger' ? ' confirm-modal-head--danger' : ''}`}>
+            {variant === 'danger' ? (
+              <span className="confirm-modal-icon" aria-hidden>
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+                  <path
+                    d="M12 9v4M12 17h.01M10.3 4.5h3.4L20 19H4L10.3 4.5z"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </span>
+            ) : null}
+            <div className="confirm-modal-head-text">
+              <h2 id="confirm-modal-title" className="confirm-modal-title">
+                {title}
+              </h2>
+              <div className="confirm-modal-message">{message}</div>
+            </div>
+          </div>
+        </div>
         <div className="confirm-modal-actions">
-          <button type="button" className={confirmClass} disabled={busy} onClick={() => void onConfirm()}>
-            {busy ? 'Please wait…' : confirmLabel}
-          </button>
           <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={onCancel}>
             {cancelLabel}
+          </button>
+          <button type="button" className={confirmClass} disabled={busy} onClick={() => void onConfirm()}>
+            {busy ? 'Please wait…' : confirmLabel}
           </button>
         </div>
       </div>

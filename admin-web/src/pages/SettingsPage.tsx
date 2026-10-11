@@ -42,8 +42,10 @@ function SettingsToggle({
   );
 }
 
+const CLEAR_HISTORY_CONFIRM_PHRASE = 'DELETE ALL HISTORY';
+
 export function SettingsPage() {
-  const { user, businessId } = useAuth();
+  const { user, businessId, isStoreOwner } = useAuth();
   const { darkMode, setDarkMode } = useTheme();
   const {
     notificationsEnabled,
@@ -68,6 +70,12 @@ export function SettingsPage() {
   const [downloadPinSaving, setDownloadPinSaving] = useState(false);
   const [downloadPinError, setDownloadPinError] = useState<string | null>(null);
   const [downloadPinSuccess, setDownloadPinSuccess] = useState<string | null>(null);
+
+  const [clearConfirmText, setClearConfirmText] = useState('');
+  const [clearPassword, setClearPassword] = useState('');
+  const [clearBusy, setClearBusy] = useState(false);
+  const [clearError, setClearError] = useState<string | null>(null);
+  const [clearSuccess, setClearSuccess] = useState<string | null>(null);
 
   const onNotifToggle = useCallback(
     (enabled: boolean) => {
@@ -94,6 +102,11 @@ export function SettingsPage() {
   useEffect(() => {
     setDownloadPinError(null);
   }, [downloadPin, downloadPinConfirm, downloadPinPassword]);
+
+  useEffect(() => {
+    setClearError(null);
+    setClearSuccess(null);
+  }, [clearConfirmText, clearPassword]);
 
   const loadDownloadPinStatus = useCallback(async () => {
     if (!businessId) {
@@ -220,6 +233,67 @@ export function SettingsPage() {
     setConfirmPassword('');
     setPasswordSuccess('Password updated successfully.');
     setPasswordSaving(false);
+  }
+
+  async function onClearSalesHistory(e: FormEvent) {
+    e.preventDefault();
+    if (!user?.email) {
+      setClearError('Missing account email.');
+      return;
+    }
+    setClearError(null);
+    setClearSuccess(null);
+
+    if (clearConfirmText.trim() !== CLEAR_HISTORY_CONFIRM_PHRASE) {
+      setClearError(`Type exactly "${CLEAR_HISTORY_CONFIRM_PHRASE}" to confirm.`);
+      return;
+    }
+    if (!clearPassword.trim()) {
+      setClearError('Enter your admin password.');
+      return;
+    }
+
+    setClearBusy(true);
+    const { error: verifyError } = await supabase.auth.signInWithPassword({
+      email: user.email,
+      password: clearPassword,
+    });
+    if (verifyError) {
+      setClearError('Account password is incorrect.');
+      setClearBusy(false);
+      return;
+    }
+
+    const { data: raw, error: rpcError } = await supabase.rpc('owner_clear_store_sales_history');
+    if (rpcError) {
+      const hint = rpcError.message.includes('owner_clear_store_sales_history')
+        ? ' Run supabase/patches/owner-clear-store-sales-history.sql in Supabase SQL Editor.'
+        : '';
+      setClearError(rpcError.message + hint);
+      setClearBusy(false);
+      return;
+    }
+
+    const res = raw as {
+      ok?: boolean;
+      deleted_orders?: number;
+      deleted_pos_sales?: number;
+      deleted_laundry_pos_sales?: number;
+    } | null;
+    if (res?.ok !== true) {
+      setClearError('Could not clear history.');
+      setClearBusy(false);
+      return;
+    }
+
+    setClearConfirmText('');
+    setClearPassword('');
+    setClearSuccess(
+      `Cleared: ${res.deleted_orders ?? 0} online order(s), ${res.deleted_pos_sales ?? 0} POS sale(s)${
+        (res.deleted_laundry_pos_sales ?? 0) > 0 ? `, ${res.deleted_laundry_pos_sales} laundry POS sale(s)` : ''
+      }. Products, inventory, and expenses were not changed.`
+    );
+    setClearBusy(false);
   }
 
   return (
@@ -381,6 +455,63 @@ export function SettingsPage() {
           </button>
         </form>
       </SettingsSection>
+
+      {isStoreOwner ? (
+        <SettingsSection
+          title="Clear sales & order history"
+          subtitle="Permanent delete for this store only (owner password required)"
+          icon={
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
+              <path
+                d="M4 7h16M9 7V5h6v2M10 11v6M14 11v6M6 7l1 14h10l1-14"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+              />
+            </svg>
+          }
+        >
+          <div className="settings-danger-callout">
+            <p>
+              <strong>This cannot be undone.</strong> Removes all online orders, walk-in POS sales, borrowed container
+              records, loyalty points/vouchers for your store, and admin/staff order notifications.
+            </p>
+            <p className="muted-block">
+              Keeps: products & stock, business expenses, customer accounts, and staff accounts.
+            </p>
+          </div>
+          {clearError ? <p className="error-text module-alert">{clearError}</p> : null}
+          {clearSuccess ? <p className="success-text module-alert">{clearSuccess}</p> : null}
+          <form className="settings-password-form" onSubmit={(e) => void onClearSalesHistory(e)}>
+            <div className="field">
+              <label htmlFor="clear-confirm">
+                Type <strong>{CLEAR_HISTORY_CONFIRM_PHRASE}</strong> to confirm
+              </label>
+              <input
+                id="clear-confirm"
+                type="text"
+                autoComplete="off"
+                placeholder={CLEAR_HISTORY_CONFIRM_PHRASE}
+                value={clearConfirmText}
+                onChange={(e) => setClearConfirmText(e.target.value)}
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="clear-password">Owner / admin password</label>
+              <PasswordInput
+                id="clear-password"
+                autoComplete="current-password"
+                placeholder="Your admin login password"
+                value={clearPassword}
+                onChange={(e) => setClearPassword(e.target.value)}
+              />
+            </div>
+            <button type="submit" className="btn btn-danger btn-sm" disabled={clearBusy}>
+              {clearBusy ? 'Clearing…' : 'Clear all order & sales history'}
+            </button>
+          </form>
+        </SettingsSection>
+      ) : null}
 
       <SettingsSection
         title="Help"

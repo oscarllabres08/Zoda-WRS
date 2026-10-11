@@ -2077,6 +2077,18 @@ table.data-table th {
   border: 1px solid var(--border);
 }
 
+.confirm-modal-message {
+  margin-top: 8px;
+  line-height: 1.45;
+}
+
+.confirm-modal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 18px;
+}
+
 .history-list {
   list-style: none;
   padding: 0;
@@ -2887,6 +2899,24 @@ table.data-table th {
 
 .pos-borrow-qty input {
   max-width: 88px;
+}
+
+.settings-danger-callout {
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(229, 72, 77, 0.35);
+  background: rgba(229, 72, 77, 0.06);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.settings-danger-callout p {
+  margin: 0 0 8px;
+}
+
+.settings-danger-callout p:last-child {
+  margin-bottom: 0;
 }
 
 .customer-list-name-cell {

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
+import { ConfirmModal } from '../components/ConfirmModal';
 import { useAuth } from '../auth/AuthProvider';
 import { supabase } from '../lib/supabase';
 
@@ -18,6 +19,7 @@ export function StaffPage() {
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [removeTarget, setRemoveTarget] = useState<Row | null>(null);
 
   const load = useCallback(async () => {
     if (!user?.id || !businessId) return;
@@ -93,8 +95,9 @@ export function StaffPage() {
     }
   }
 
-  async function deleteAccount(staffUserId: string) {
-    if (!window.confirm('Remove this staff account? They will lose Seller app access.')) return;
+  async function confirmRemoveStaff() {
+    if (!removeTarget) return;
+    const staffUserId = removeTarget.user_id;
     setBusyId(staffUserId);
     setError(null);
     try {
@@ -104,6 +107,7 @@ export function StaffPage() {
       if (delErr) throw delErr;
       const res = data as { ok?: boolean; message?: string; error?: string } | null;
       if (res && res.ok === false) throw new Error(res.message ?? res.error ?? 'Delete failed');
+      setRemoveTarget(null);
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Delete failed');
@@ -201,7 +205,7 @@ export function StaffPage() {
                         type="button"
                         className="btn btn-danger btn-sm"
                         disabled={busyId === r.user_id}
-                        onClick={() => void deleteAccount(r.user_id)}
+                        onClick={() => setRemoveTarget(r)}
                       >
                         Remove
                       </button>
@@ -213,6 +217,24 @@ export function StaffPage() {
           </div>
         )}
       </div>
+
+      <ConfirmModal
+        open={removeTarget != null}
+        title="Remove staff account?"
+        message={
+          <>
+            Remove <strong>{removeTarget?.display_name ?? removeTarget?.email ?? 'this staff member'}</strong>? They
+            will lose Seller app access.
+          </>
+        }
+        confirmLabel="Yes, remove"
+        variant="danger"
+        busy={removeTarget != null && busyId === removeTarget.user_id}
+        onCancel={() => {
+          if (busyId !== removeTarget?.user_id) setRemoveTarget(null);
+        }}
+        onConfirm={() => void confirmRemoveStaff()}
+      />
     </>
   );
 }

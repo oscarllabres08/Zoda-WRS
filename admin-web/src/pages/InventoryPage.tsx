@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 
+import { ConfirmModal } from '../components/ConfirmModal';
 import { ImageUploadField } from '../components/ImageUploadField';
 import { ModulePageHeader } from '../components/ModulePageHeader';
 import { useAuth } from '../auth/AuthProvider';
@@ -48,6 +49,8 @@ export function InventoryPage() {
   const [editImageFile, setEditImageFile] = useState<File | null>(null);
   const [editSaving, setEditSaving] = useState(false);
   const [loyaltyProgramActive, setLoyaltyProgramActive] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<ProductRow | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
   const [loyaltyLoading, setLoyaltyLoading] = useState(true);
 
   const branch =
@@ -244,12 +247,17 @@ export function InventoryPage() {
     }
   }
 
-  async function deleteProduct(p: ProductRow) {
-    if (!window.confirm(`Delete “${p.name}”? This cannot be undone.`)) return;
+  async function confirmDeleteProduct() {
+    if (!deleteTarget) return;
+    setDeleteBusy(true);
     setError(null);
-    const { error: err } = await supabase.from('products').delete().eq('id', p.id);
+    const { error: err } = await supabase.from('products').delete().eq('id', deleteTarget.id);
     if (err) setError(err.message);
-    else await load();
+    else {
+      setDeleteTarget(null);
+      await load();
+    }
+    setDeleteBusy(false);
   }
 
   return (
@@ -397,7 +405,7 @@ export function InventoryPage() {
                 loyaltyProgramActive={loyaltyProgramActive}
                 uploading={uploadingId === p.id}
                 onEdit={() => openEdit(p)}
-                onDelete={() => void deleteProduct(p)}
+                onDelete={() => setDeleteTarget(p)}
                 onToggleAvail={(v) => void toggleAvailability(p.id, v)}
                 onReplaceImage={(f) => void replaceImage(p.id, f)}
               />
@@ -414,7 +422,7 @@ export function InventoryPage() {
                 loyaltyProgramActive={loyaltyProgramActive}
                 uploading={uploadingId === p.id}
                 onEdit={() => openEdit(p)}
-                onDelete={() => void deleteProduct(p)}
+                onDelete={() => setDeleteTarget(p)}
                 onToggleAvail={(v) => void toggleAvailability(p.id, v)}
                 onReplaceImage={(f) => void replaceImage(p.id, f)}
               />
@@ -514,6 +522,23 @@ export function InventoryPage() {
           </div>
         </div>
       ) : null}
+
+      <ConfirmModal
+        open={deleteTarget != null}
+        title="Delete product?"
+        message={
+          <>
+            Delete <strong>{deleteTarget?.name}</strong>? This cannot be undone.
+          </>
+        }
+        confirmLabel="Yes, delete"
+        variant="danger"
+        busy={deleteBusy}
+        onCancel={() => {
+          if (!deleteBusy) setDeleteTarget(null);
+        }}
+        onConfirm={() => void confirmDeleteProduct()}
+      />
     </div>
   );
 }

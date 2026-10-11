@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
+import { ConfirmModal } from '../components/ConfirmModal';
 import { PageHeader } from '../components/PageHeader';
 import { useAuth } from '../auth/AuthProvider';
 import {
@@ -35,6 +36,8 @@ export function ExpensesPage({ variant = 'wrs' }: ExpensesPageProps) {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<ExpenseRow | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
 
   const [viewDate, setViewDate] = useState(todayDateInputValue);
   const [viewAllDates, setViewAllDates] = useState(false);
@@ -134,18 +137,22 @@ export function ExpensesPage({ variant = 'wrs' }: ExpensesPageProps) {
     }
   }
 
-  async function remove(id: string) {
-    if (!businessId) return;
-    if (!window.confirm('Delete this expense entry?')) return;
+  async function confirmRemoveExpense() {
+    if (!businessId || !deleteTarget) return;
+    setDeleteBusy(true);
     setLoadError(null);
     const { error: err } = await supabase
       .from('business_expenses')
       .delete()
-      .eq('id', id)
+      .eq('id', deleteTarget.id)
       .eq('seller_id', businessId)
       .eq('business_unit', businessUnit);
     if (err) setLoadError(err.message);
-    else await load();
+    else {
+      setDeleteTarget(null);
+      await load();
+    }
+    setDeleteBusy(false);
   }
 
   function showToday() {
@@ -313,7 +320,7 @@ export function ExpensesPage({ variant = 'wrs' }: ExpensesPageProps) {
                     <td>{money(Number(r.amount))}</td>
                     <td>{r.notes?.trim() || '—'}</td>
                     <td>
-                      <button type="button" className="btn btn-ghost btn-sm" onClick={() => void remove(r.id)}>
+                      <button type="button" className="btn btn-ghost btn-sm" onClick={() => setDeleteTarget(r)}>
                         Delete
                       </button>
                     </td>
@@ -324,6 +331,19 @@ export function ExpensesPage({ variant = 'wrs' }: ExpensesPageProps) {
           </div>
         ) : null}
       </div>
+
+      <ConfirmModal
+        open={deleteTarget != null}
+        title="Delete expense?"
+        message="Delete this expense entry? This cannot be undone."
+        confirmLabel="Yes, delete"
+        variant="danger"
+        busy={deleteBusy}
+        onCancel={() => {
+          if (!deleteBusy) setDeleteTarget(null);
+        }}
+        onConfirm={() => void confirmRemoveExpense()}
+      />
     </>
   );
 }
